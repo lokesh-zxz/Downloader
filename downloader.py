@@ -1,0 +1,423 @@
+import os
+import re
+import math
+import uuid
+import time
+import logging
+import threading
+from typing import Dict, Any, List, Optional
+import yt_dlp
+from ffmpeg_utils import find_ffmpeg
+
+logger = logging.getLogger("yt_downloader")
+logger.setLevel(logging.INFO)
+
+DOWNLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "downloads"))
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+
+# In-memory store for download tasks
+# In production with multiple workers this would use Redis, but for standalone fullstack FastAPI,
+# a thread-safe dict is fast, responsive, and has zero external dependencies.
+tasks_lock = threading.Lock()
+download_tasks: Dict[str, Dict[str, Any]] = {}
+
+def format_duration(seconds: Optional[int]) -> str:
+    if not seconds:
+        return "Unknown"
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    if h > 0:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+def format_number(val: Optional[int]) -> str:
+    if not val:
+        return "0"
+    if val >= 1_000_000_000:
+        return f"{val / 1_000_000_000:.1f}B"
+    if val >= 1_000_000:
+        return f"{val / 1_000_000:.1f}M"
+    if val >= 1_000:
+        return f"{val / 1_000:.1f}K"
+    return str(val)
+
+def format_bytes(b: Optional[float]) -> str:
+    if not b or b <= 0:
+        return "Unknown"
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if b < 1024.0:
+            return f"{b:.1f} {unit}"
+        b /= 1024.0
+    return f"{b:.1f} PB"
+
+def clean_filename(filename: str) -> str:
+    return re.sub(r'[\\/*?:"<>|]', "", filename)
+
+def fetch_video_metadata(url: str) -> Dict[str, Any]:
+    """
+    Extract video title, thumbnail, duration, author, and available resolutions
+    (including 4K/2160p, 1440p, 1080p, 720p, etc.).
+    """
+    ffmpeg_dir = find_ffmpeg()
+
+    ydl_opts = {
+        "skip_download": True,
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": False,
+    }
+    if ffmpeg_dir:
+        ydl_opts["ffmpeg_location"] = ffmpeg_dir
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(url, download=False)
+        except Exception as e:
+            raise ValueError(f"Failed to fetch video: {str(e)}")
+
+    if not info:
+        raise ValueError("Could not extract video metadata.")
+
+    # Target resolution tiers
+    # We explicitly highlight 2160p (4K), 1440p (2K), 1080p (FHD), 720p, 480p, 360p
+    target_tiers = [
+        {"height": 2160, "name": "4K Ultra HD", "badge": "2160p (4K)", "is_4k": True},
+        {"height": 1440, "name": "2K Quad HD", "badge": "1440p (2K)", "is_4k": False},
+        {"height": 1080, "name": "Full HD", "badge": "1080p (FHD)", "is_4k": False},
+        {"height": 720, "name": "High Definition", "badge": "720p (HD)", "is_4k": False},
+        {"height": 480, "name": "Standard Definition", "badge": "480p (SD)", "is_4k": False},
+        {"height": 360, "name": "Basic Quality", "badge": "360p (SD)", "is_4k": False},
+    ]
+
+    formats = info.get("formats", [])
+    duration = info.get("duration", 0)
+
+    # Check best available audio format size/bitrate to add to video size estimate
+    best_audio_size = 0
+    best_audio_abr = 128  # kbps default fallback
+    for f in formats:
+        if f.get("vcodec") == "none" and f.get("acodec") != "none":
+            abr = f.get("abr") or 0
+            if abr > best_audio_abr:
+                best_audio_abr = abr
+            sz = f.get("filesize") or f.get("filesize_approx")
+            if sz and sz > best_audio_size:
+                best_audio_size = sz
+
+    if not best_audio_size and duration > 0:
+        best_audio_size = (best_audio_abr * 1000 / 8) * duration
+
+    # Map available video heights from actual formats
+    available_heights = {}
+    for f in formats:
+        h = f.get("height")
+        if not h or f.get("vcodec") == "none":
+            continue
+
+        fps = f.get("fps") or 30
+        filesize = f.get("filesize") or f.get("filesize_approx")
+        vbr = f.get("vbr") or 0
+
+        if h not in available_heights:
+            available_heights[h] = {
+                "height": h,
+                "fps": fps,
+                "format_id": f.get("format_id"),
+                "ext": f.get("ext", "mp4"),
+                "filesize": filesize,
+                "vbr": vbr,
+                "vcodec": f.get("vcodec", "video"),
+            }
+        else:
+            # Keep highest fps / best quality
+            if fps > available_heights[h]["fps"]:
+                available_heights[h]["fps"] = fps
+            if filesize and (not available_heights[h]["filesize"] or filesize > available_heights[h]["filesize"]):
+                available_heights[h]["filesize"] = filesize
+            if vbr and vbr > available_heights[h]["vbr"]:
+                available_heights[h]["vbr"] = vbr
+
+    max_height = max(available_heights.keys()) if available_heights else 1080
+
+    # Build resolution choices
+    resolutions = []
+    for tier in target_tiers:
+        target_h = tier["height"]
+        # Find if this height is available or if video has at least this resolution
+        is_available = any(h >= target_h for h in available_heights.keys()) if available_heights else True
+        
+        # Exact or closest format info
+        best_match = available_heights.get(target_h)
+        if not best_match:
+            # find closest available height <= target_h
+            candidates = [h for h in available_heights.keys() if h <= target_h]
+            if candidates:
+                best_match = available_heights[max(candidates)]
+
+        fps_val = best_match["fps"] if best_match else 60 if target_h >= 1080 else 30
+        fps_label = f"{fps_val}fps" if fps_val else "30fps"
+
+        # Calculate estimated combined file size
+        estimated_size = None
+        if best_match and best_match.get("filesize"):
+            estimated_size = best_match["filesize"] + best_audio_size
+        elif best_match and best_match.get("vbr") and duration > 0:
+            estimated_size = ((best_match["vbr"] + best_audio_abr) * 1000 / 8) * duration
+        elif duration > 0:
+            # Standard estimated bitrates based on resolution
+            bitrate_map = {2160: 25000, 1440: 12000, 1080: 5000, 720: 2500, 480: 1200, 360: 700}
+            est_br = bitrate_map.get(target_h, 3000)
+            estimated_size = (est_br * 1000 / 8) * duration
+
+        size_label = format_bytes(estimated_size) if estimated_size else "Varies"
+
+        resolutions.append({
+            "height": target_h,
+            "name": tier["name"],
+            "badge": tier["badge"],
+            "fps": fps_label,
+            "estimated_size": size_label,
+            "is_available": is_available,
+            "is_4k": tier["is_4k"],
+            "type": "video",
+            "format_string": f"bestvideo[height<={target_h}]+bestaudio/best[height<={target_h}]/best",
+        })
+
+    # Add Audio-Only (MP3 / High Quality M4A)
+    audio_est_size = format_bytes(best_audio_size) if best_audio_size else "3 - 10 MB"
+    resolutions.append({
+        "height": 0,
+        "name": "Audio Only (MP3)",
+        "badge": "Audio (MP3 / 320kbps)",
+        "fps": "Audio only",
+        "estimated_size": audio_est_size,
+        "is_available": True,
+        "is_4k": False,
+        "type": "audio",
+        "format_string": "bestaudio/best",
+    })
+
+    # Thumbnail selection (prefer high quality)
+    thumbnails = info.get("thumbnails", [])
+    thumbnail_url = info.get("thumbnail")
+    if thumbnails:
+        # Sort by width or preference
+        sorted_thumbs = sorted(
+            [t for t in thumbnails if t.get("url")],
+            key=lambda t: (t.get("width") or 0) * (t.get("height") or 0),
+            reverse=True
+        )
+        if sorted_thumbs:
+            thumbnail_url = sorted_thumbs[0]["url"]
+
+    return {
+        "id": info.get("id"),
+        "title": info.get("title", "Untitled Video"),
+        "uploader": info.get("uploader") or info.get("channel") or "Unknown Creator",
+        "uploader_url": info.get("uploader_url") or info.get("channel_url"),
+        "thumbnail": thumbnail_url,
+        "duration": duration,
+        "duration_str": format_duration(duration),
+        "view_count": info.get("view_count", 0),
+        "view_count_str": format_number(info.get("view_count")),
+        "upload_date": info.get("upload_date"),
+        "webpage_url": info.get("webpage_url", url),
+        "max_height": max_height,
+        "has_4k": max_height >= 2160,
+        "has_1440p": max_height >= 1440,
+        "resolutions": resolutions,
+    }
+
+
+def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
+    """
+    Background worker that runs yt-dlp to download and merge 4K video + audio via FFmpeg.
+    """
+    task_dir = os.path.join(DOWNLOADS_DIR, task_id)
+    os.makedirs(task_dir, exist_ok=True)
+    ffmpeg_dir = find_ffmpeg()
+
+    def update_task(**kwargs):
+        with tasks_lock:
+            if task_id in download_tasks:
+                download_tasks[task_id].update(kwargs)
+
+    def progress_hook(d):
+        status = d.get("status")
+        if status == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes") or 0
+            percent = 0.0
+            if total > 0:
+                percent = round((downloaded / total) * 100, 1)
+
+            speed_str = d.get("_speed_str") or ""
+            eta_str = d.get("_eta_str") or ""
+            filename = os.path.basename(d.get("filename", ""))
+
+            # Detect whether currently downloading video or audio stream
+            stage = "Downloading video stream..."
+            if "audio" in filename.lower() or d.get("info_dict", {}).get("acodec") and not d.get("info_dict", {}).get("vcodec"):
+                stage = "Downloading audio stream..."
+
+            update_task(
+                status="downloading",
+                stage=stage,
+                percent=percent,
+                speed=speed_str.strip(),
+                eta=eta_str.strip(),
+                downloaded_bytes=downloaded,
+                total_bytes=total,
+            )
+
+        elif status == "finished":
+            update_task(
+                status="processing",
+                stage="Merging 4K video & audio streams with FFmpeg...",
+                percent=99.0,
+                speed="Merging...",
+                eta="Finalizing",
+            )
+
+    try:
+        update_task(status="starting", stage="Initializing yt-dlp download...", percent=5.0)
+
+        # 4K / High Resolution format string requirement:
+        # Must pull bestvideo[height<=target]+bestaudio/best
+        if is_audio_only:
+            format_str = "bestaudio/best"
+            ext = "mp3"
+        elif height > 0:
+            # 4K processing format string
+            format_str = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+            ext = "mp4"
+        else:
+            format_str = "bestvideo+bestaudio/best"
+            ext = "mp4"
+
+        outtmpl = os.path.join(task_dir, "%(title).150B [%(id)s].%(ext)s")
+
+        ydl_opts: Dict[str, Any] = {
+            "format": format_str,
+            "outtmpl": outtmpl,
+            "progress_hooks": [progress_hook],
+            "noplaylist": True,
+            "quiet": False,
+            "no_warnings": False,
+            "retries": 10,
+            "fragment_retries": 10,
+        }
+
+        if is_audio_only:
+            ydl_opts["postprocessors"] = [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }]
+        else:
+            # Merge 4K separate streams into standard MP4
+            ydl_opts["merge_output_format"] = "mp4"
+
+        if ffmpeg_dir:
+            ydl_opts["ffmpeg_location"] = ffmpeg_dir
+
+        update_task(status="downloading", stage="Connecting to video provider...", percent=10.0)
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        # Find the final produced file
+        produced_files = [
+            f for f in os.listdir(task_dir)
+            if not f.endswith(".part") and not f.endswith(".ytdl") and not f.endswith(".temp")
+        ]
+
+        if not produced_files:
+            raise FileNotFoundError("Merged video file could not be found after processing.")
+
+        # Sort to find the largest/newest file
+        produced_files.sort(key=lambda f: os.path.getsize(os.path.join(task_dir, f)), reverse=True)
+        final_filename = produced_files[0]
+        final_filepath = os.path.join(task_dir, final_filename)
+        filesize = os.path.getsize(final_filepath)
+
+        update_task(
+            status="completed",
+            stage="Complete! Ready for download.",
+            percent=100.0,
+            filename=final_filename,
+            filepath=final_filepath,
+            filesize=filesize,
+            filesize_str=format_bytes(filesize),
+            download_url=f"/api/download/file/{task_id}",
+        )
+
+    except Exception as e:
+        logger.exception("Download failed:")
+        error_msg = str(e)
+        if "ffmpeg" in error_msg.lower():
+            error_msg += " (FFmpeg is required to merge 4K video and audio. Please install FFmpeg on your machine)."
+        update_task(
+            status="error",
+            stage="Failed",
+            error=error_msg,
+        )
+
+
+def start_download_task(url: str, height: int, is_audio_only: bool = False) -> str:
+    """
+    Initiates a background download task and returns task_id.
+    """
+    task_id = str(uuid.uuid4())
+    with tasks_lock:
+        download_tasks[task_id] = {
+            "task_id": task_id,
+            "url": url,
+            "height": height,
+            "is_audio_only": is_audio_only,
+            "status": "queued",
+            "stage": "Queueing task...",
+            "percent": 0.0,
+            "speed": "",
+            "eta": "",
+            "filename": "",
+            "filepath": "",
+            "filesize": 0,
+            "filesize_str": "",
+            "error": None,
+            "created_at": time.time(),
+        }
+
+    thread = threading.Thread(
+        target=download_worker,
+        args=(task_id, url, height, is_audio_only),
+        daemon=True
+    )
+    thread.start()
+    return task_id
+
+
+def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
+    with tasks_lock:
+        return download_tasks.get(task_id)
+
+
+def cleanup_task_files(task_id: str):
+    """
+    Clean up downloaded files after serving.
+    """
+    task_dir = os.path.join(DOWNLOADS_DIR, task_id)
+    if os.path.exists(task_dir):
+        try:
+            for item in os.listdir(task_dir):
+                p = os.path.join(task_dir, item)
+                if os.path.isfile(p):
+                    os.remove(p)
+            os.rmdir(task_dir)
+        except Exception as e:
+            logger.warning(f"Error cleaning up task {task_id}: {e}")
+    with tasks_lock:
+        download_tasks.pop(task_id, None)
+

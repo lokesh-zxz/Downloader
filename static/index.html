@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>4K Video Downloader - Fast, Free & Ultra HD</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#1e1b4b',
+            },
+            surface: {
+              800: '#131b2e',
+              900: '#0b0f19',
+              950: '#070a12'
+            }
+          },
+          animation: {
+            'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            pulseGlow: {
+              '0%, 100%': { opacity: '0.4' },
+              '50%': { opacity: '0.8' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .glass-panel {
+      background: rgba(19, 27, 46, 0.75);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .gradient-text {
+      background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 50%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .resolution-card.selected {
+      border-color: #6366f1;
+      background: rgba(99, 102, 241, 0.12);
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.25);
+    }
+  </style>
+</head>
+<body class="bg-surface-950 text-slate-100 min-h-screen flex flex-col selection:bg-brand-500 selection:text-white">
+
+  <!-- Background decorative glows -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+    <div class="absolute -top-40 -left-40 w-96 h-96 bg-brand-600/20 rounded-full blur-3xl animate-pulse-glow"></div>
+    <div class="absolute top-1/3 -right-40 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl"></div>
+    <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-cyan-600/15 rounded-full blur-3xl"></div>
+  </div>
+
+  <!-- Navbar -->
+  <header class="border-b border-white/10 glass-panel sticky top-0 z-40">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-purple-500 flex items-center justify-center shadow-lg shadow-brand-500/30">
+          <i data-lucide="video" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <span class="text-xl font-extrabold tracking-tight">Ultra<span class="text-brand-500">4K</span></span>
+          <span class="hidden sm:inline-block ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300 border border-brand-500/30">Downloader</span>
+        </div>
+      </div>
+
+      <!-- FFmpeg status badge -->
+      <div id="ffmpegBadgeContainer" class="flex items-center space-x-2">
+        <button id="ffmpegStatusBtn" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 bg-slate-900/60 border-slate-700 text-slate-300 hover:border-slate-500">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+          <span>Checking FFmpeg...</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-5xl w-full mx-auto px-4 py-10">
+
+    <!-- Hero Title -->
+    <div class="text-center max-w-2xl mx-auto mb-10">
+      <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-slate-300 mb-4">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>Supports up to 2160p (4K UHD) at 60 FPS</span>
+      </div>
+      <h1 class="text-4xl sm:text-5xl font-black tracking-tight mb-4">
+        Download Videos in <span class="gradient-text">Stunning 4K</span>
+      </h1>
+      <p class="text-slate-400 text-sm sm:text-base leading-relaxed">
+        High-speed URL extraction and lossless video/audio merging powered by FastAPI, yt-dlp, and FFmpeg.
+      </p>
+    </div>
+
+    <!-- Input Section -->
+    <div class="glass-panel rounded-2xl p-4 sm:p-6 shadow-2xl mb-8">
+      <form id="fetchForm" class="flex flex-col sm:flex-row gap-3">
+        <div class="relative flex-1">
+          <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+            <i data-lucide="link" class="w-5 h-5"></i>
+          </div>
+          <input
+            type="url"
+            id="videoUrl"
+            required
+            placeholder="Paste video URL here (e.g., https://www.youtube.com/watch?v=...)"
+            class="w-full pl-12 pr-24 py-4 rounded-xl bg-slate-900/90 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm sm:text-base transition-all"
+          />
+          <button
+            type="button"
+            id="pasteBtn"
+            title="Paste from clipboard"
+            class="absolute inset-y-2 right-2 px-3 flex items-center space-x-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all"
+          >
+            <i data-lucide="clipboard" class="w-3.5 h-3.5"></i>
+            <span>Paste</span>
+          </button>
+        </div>
+
+        <button
+          type="submit"
+          id="fetchBtn"
+          class="px-8 py-4 rounded-xl bg-gradient-to-r from-brand-600 to-purple-600 hover:from-brand-500 hover:to-purple-500 text-white font-bold text-sm sm:text-base shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span id="fetchBtnText">Fetch Video</span>
+          <i id="fetchBtnIcon" data-lucide="arrow-right" class="w-5 h-5"></i>
+          <svg id="fetchSpinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+        </button>
+      </form>
+
+      <!-- Quick sample links for testing -->
+      <div class="mt-4 pt-4 border-t border-white/5 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+        <span class="font-medium text-slate-500">Try 4K sample:</span>
+        <button type="button" class="sample-link px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 transition-colors" data-url="https://www.youtube.com/watch?v=LXb3EKWsInQ">
+          Costa Rica 4K (60fps UHD)
+        </button>
+        <button type="button" class="sample-link px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 transition-colors" data-url="https://www.youtube.com/watch?v=aqz-KE-bpKQ">
+          Big Buck Bunny 4K
+        </button>
+      </div>
+    </div>
+
+    <!-- Error Alert Banner -->
+    <div id="errorAlert" class="hidden glass-panel border-rose-500/40 bg-rose-950/40 rounded-2xl p-5 mb-8 flex items-start space-x-4">
+      <div class="p-2 bg-rose-500/20 text-rose-400 rounded-xl">
+        <i data-lucide="alert-circle" class="w-6 h-6"></i>
+      </div>
+      <div class="flex-1">
+        <h4 class="text-sm font-bold text-rose-300">Extraction Error</h4>
+        <p id="errorMessage" class="text-xs sm:text-sm text-rose-200/80 mt-1"></p>
+      </div>
+      <button id="closeErrorBtn" class="text-rose-400 hover:text-white">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- Loading Skeleton Card -->
+    <div id="loadingCard" class="hidden glass-panel rounded-2xl p-6 sm:p-8 mb-8 animate-pulse">
+      <div class="flex flex-col md:flex-row gap-6">
+        <div class="w-full md:w-80 h-48 bg-slate-800 rounded-xl"></div>
+        <div class="flex-1 space-y-4">
+          <div class="h-6 bg-slate-800 rounded w-3/4"></div>
+          <div class="h-4 bg-slate-800 rounded w-1/2"></div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4">
+            <div class="h-16 bg-slate-800 rounded-xl"></div>
+            <div class="h-16 bg-slate-800 rounded-xl"></div>
+            <div class="h-16 bg-slate-800 rounded-xl"></div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 flex items-center justify-center space-x-2 text-brand-400 text-sm font-medium">
+        <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        <span>Inspecting video codecs, stream tracks, and 4K availability...</span>
+      </div>
+    </div>
+
+    <!-- Video Result & Resolution Card -->
+    <div id="resultCard" class="hidden glass-panel rounded-2xl p-6 sm:p-8 mb-8 shadow-2xl">
+      <div class="flex flex-col lg:flex-row gap-8">
+        
+        <!-- Video Preview Column -->
+        <div class="w-full lg:w-96 flex-shrink-0">
+          <div class="relative rounded-xl overflow-hidden shadow-xl aspect-video bg-black group border border-white/10">
+            <img id="videoThumb" src="" alt="Thumbnail" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none"></div>
+            <div class="absolute bottom-3 right-3 px-2 py-1 rounded bg-black/80 text-white font-mono text-xs font-bold border border-white/10 flex items-center space-x-1">
+              <i data-lucide="clock" class="w-3 h-3"></i>
+              <span id="videoDuration">00:00</span>
+            </div>
+            <div id="badge4k" class="hidden absolute top-3 left-3 px-2.5 py-1 rounded-md bg-gradient-to-r from-amber-500 to-purple-600 text-white text-xs font-extrabold shadow-lg shadow-amber-500/20 border border-white/20 flex items-center space-x-1">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              <span>4K ULTRA HD</span>
+            </div>
+          </div>
+
+          <!-- Channel & Stats -->
+          <div class="mt-4 space-y-2">
+            <h3 id="videoTitle" class="text-base sm:text-lg font-bold text-white line-clamp-2 leading-snug"></h3>
+            <div class="flex items-center justify-between text-xs text-slate-400">
+              <span id="videoUploader" class="flex items-center space-x-1.5 font-medium text-slate-300 truncate">
+                <i data-lucide="user" class="w-3.5 h-3.5 text-brand-400"></i>
+                <span class="truncate">Creator</span>
+              </span>
+              <span id="videoViews" class="flex items-center space-x-1 text-slate-400 flex-shrink-0">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                <span>0 views</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resolution Selection Column -->
+        <div class="flex-1 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <h4 class="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-2">
+                <i data-lucide="sliders" class="w-4 h-4 text-brand-400"></i>
+                <span>Select Quality & Resolution</span>
+              </h4>
+              <span class="text-xs text-slate-400">Merged via FFmpeg</span>
+            </div>
+
+            <!-- Resolution Grid -->
+            <div id="resolutionGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Download Action Trigger -->
+          <div class="pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center gap-4">
+            <button
+              id="startDownloadBtn"
+              class="w-full sm:flex-1 py-4 px-6 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-base shadow-xl shadow-brand-500/30 flex items-center justify-center space-x-2 transition-all transform active:scale-98"
+            >
+              <i data-lucide="download" class="w-5 h-5"></i>
+              <span id="startDownloadBtnText">Download Selected Quality</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Live Download Progress Card -->
+    <div id="progressCard" class="hidden glass-panel rounded-2xl p-6 sm:p-8 mb-8 border-brand-500/40 shadow-2xl">
+      <div class="flex items-start justify-between mb-4">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center">
+            <i data-lucide="loader-2" class="w-6 h-6 animate-spin"></i>
+          </div>
+          <div>
+            <h4 class="text-base font-bold text-white flex items-center space-x-2">
+              <span id="progressTitle">Processing 4K Video</span>
+            </h4>
+            <p id="progressStage" class="text-xs sm:text-sm text-slate-400 mt-0.5">Initializing download worker...</p>
+          </div>
+        </div>
+        <span id="progressPercent" class="text-2xl font-black text-brand-400 font-mono">0%</span>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="w-full bg-slate-900 rounded-full h-3.5 overflow-hidden p-0.5 border border-white/10 mb-4">
+        <div id="progressBar" class="bg-gradient-to-r from-brand-600 via-purple-500 to-brand-400 h-full rounded-full transition-all duration-300 w-0"></div>
+      </div>
+
+      <!-- Real-time Stats Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-900/60 rounded-xl p-3 border border-white/5 mb-4">
+        <div>
+          <span class="text-slate-500 block">Download Speed</span>
+          <span id="statSpeed" class="font-bold text-slate-200 font-mono mt-0.5 block">--</span>
+        </div>
+        <div>
+          <span class="text-slate-500 block">Estimated Time</span>
+          <span id="statEta" class="font-bold text-slate-200 font-mono mt-0.5 block">--</span>
+        </div>
+        <div>
+          <span class="text-slate-500 block">Stream Processing</span>
+          <span id="statStream" class="font-bold text-brand-300 mt-0.5 block">Video + Audio</span>
+        </div>
+        <div>
+          <span class="text-slate-500 block">Stitching Engine</span>
+          <span class="font-bold text-emerald-400 mt-0.5 block">FFmpeg Remux</span>
+        </div>
+      </div>
+
+      <!-- Download ready notification -->
+      <div id="downloadReadyNotice" class="hidden p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div class="flex items-center space-x-3 text-emerald-300">
+          <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-400 flex-shrink-0"></i>
+          <span class="text-xs sm:text-sm font-medium">Video successfully merged! Delivery to browser started automatically.</span>
+        </div>
+        <a id="manualDownloadLink" href="#" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-colors whitespace-nowrap">
+          Click if download didn't start
+        </a>
+      </div>
+    </div>
+
+    <!-- Feature Highlights -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 text-slate-400 text-xs sm:text-sm">
+      <div class="glass-panel rounded-xl p-5 border-white/5">
+        <div class="w-8 h-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center mb-3">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+        </div>
+        <h5 class="text-sm font-bold text-white mb-1">True 4K (2160p) Merging</h5>
+        <p class="leading-relaxed">YouTube separates 4K video from audio streams. Our backend automatically stitches them using FFmpeg into pristine MP4.</p>
+      </div>
+
+      <div class="glass-panel rounded-xl p-5 border-white/5">
+        <div class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center mb-3">
+          <i data-lucide="zap" class="w-4 h-4"></i>
+        </div>
+        <h5 class="text-sm font-bold text-white mb-1">Blazing Fast FastAPI</h5>
+        <p class="leading-relaxed">Asynchronous multi-threaded download workers with real-time speed, progress updates, and automatic browser delivery.</p>
+      </div>
+
+      <div class="glass-panel rounded-xl p-5 border-white/5">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-3">
+          <i data-lucide="shield-check" class="w-4 h-4"></i>
+        </div>
+        <h5 class="text-sm font-bold text-white mb-1">Clean & Minimal</h5>
+        <p class="leading-relaxed">No ads, no clickbaits, no pop-ups. Direct streaming of video files straight into your downloads folder.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FFmpeg Setup Modal -->
+  <div id="ffmpegModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    <div class="glass-panel border-white/20 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+      <button id="closeModalBtn" class="absolute top-5 right-5 text-slate-400 hover:text-white">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="flex items-center space-x-3 mb-4">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+          <i data-lucide="terminal" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white">FFmpeg Setup Guide</h3>
+          <p class="text-xs text-slate-400">Required to merge separate 4K video and audio tracks</p>
+        </div>
+      </div>
+
+      <div class="space-y-4 text-xs sm:text-sm text-slate-300">
+        <p class="leading-relaxed">
+          YouTube and modern video platforms host 4K (2160p), 1440p, and 1080p video as a separate silent video track, and audio as a separate audio track. 
+          <strong>FFmpeg</strong> is the industry-standard media engine that yt-dlp uses to combine them into a single .mp4 file.
+        </p>
+
+        <div class="space-y-2">
+          <span class="font-bold text-slate-200">1-Click Install for Windows (Recommended):</span>
+          <div class="relative bg-slate-950 p-3 rounded-xl border border-white/10 font-mono text-xs text-brand-300 flex items-center justify-between">
+            <span id="cmdWin">winget install Gyan.FFmpeg</span>
+            <button id="copyCmdBtn" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white text-xs font-sans transition-colors flex items-center space-x-1">
+              <i data-lucide="copy" class="w-3 h-3"></i>
+              <span id="copyText">Copy</span>
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400">
+            Open PowerShell or Command Prompt, paste the command above and press Enter. Once finished, restart this app and FFmpeg will be detected automatically!
+          </p>
+        </div>
+
+        <div class="pt-2 border-t border-white/10 flex items-center justify-between text-xs text-slate-400">
+          <span>Alternative: macOS / Linux</span>
+          <span class="font-mono text-slate-300">brew install ffmpeg / sudo apt install ffmpeg</span>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end">
+        <button id="modalGotItBtn" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs">
+          Got it
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-white/5 py-6 text-center text-xs text-slate-500">
+    <p>FastAPI & yt-dlp 4K Downloader &bull; Built with Tailwind CSS and FFmpeg</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+

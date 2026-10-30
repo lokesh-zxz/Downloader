@@ -1,10 +1,11 @@
+from __future__ import annotations
 import os
 import urllib.parse
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 from ffmpeg_utils import get_ffmpeg_status
 from downloader import (
@@ -12,7 +13,6 @@ from downloader import (
     start_download_task,
     get_task_status,
     cleanup_task_files,
-    DOWNLOADS_DIR,
 )
 
 app = FastAPI(
@@ -21,7 +21,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for local development flexibility
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,10 +30,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure static folder exists
-STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
-os.makedirs(STATIC_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Locate static folder safely across local, Docker, and Vercel environments
+def find_static_dir() -> str:
+    possible_paths = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "static")),
+        os.path.abspath(os.path.join(os.getcwd(), "static")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "static")),
+    ]
+    for p in possible_paths:
+        if os.path.exists(p) and os.path.isdir(p):
+            return p
+    return possible_paths[0]
+
+STATIC_DIR = find_static_dir()
+
+# Mount static files safely
+try:
+    if os.path.exists(STATIC_DIR):
+        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+except Exception:
+    pass
 
 class VideoInfoRequest(BaseModel):
     url: str
@@ -49,7 +65,16 @@ def serve_index():
     index_path = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return {"message": "4K Video Downloader API is running. UI index.html not yet initialized."}
+    return HTMLResponse("<h2>4K Video Downloader API is running.</h2><p>Static index.html not found.</p>")
+
+# Explicit fallback for static files if static mount is bypassed in serverless
+@app.get("/static/{filename}")
+def serve_static_fallback(filename: str):
+    file_path = os.path.join(STATIC_DIR, filename)
+    if os.path.exists(file_path):
+        media_type = "application/javascript" if filename.endswith(".js") else "text/css" if filename.endswith(".css") else None
+        return FileResponse(file_path, media_type=media_type)
+    raise HTTPException(status_code=404, detail="File not found")
 
 @app.get("/api/system-status")
 def system_status():
@@ -67,7 +92,6 @@ def get_video_info(payload: VideoInfoRequest):
     if not url:
         raise HTTPException(status_code=400, detail="Please provide a valid video URL.")
     
-    # Quick basic validation
     if not (url.startswith("http://") or url.startswith("https://")):
         raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
 
@@ -86,7 +110,6 @@ def initiate_download(payload: DownloadRequest):
     if not url:
         raise HTTPException(status_code=400, detail="Missing video URL.")
 
-    # Validate height
     height = payload.height
     is_audio = payload.is_audio
 
@@ -123,8 +146,6 @@ def download_file(task_id: str, background_tasks: BackgroundTasks):
 
     media_type = "audio/mpeg" if filename.endswith(".mp3") else "video/mp4"
 
-    # Background task to clean up task directory after response is sent (after 5 minutes or schedule)
-    # Keeping it accessible for download, or schedule cleanup
     return FileResponse(
         path=filepath,
         filename=filename,

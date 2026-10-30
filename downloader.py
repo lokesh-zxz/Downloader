@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import re
 import math
@@ -5,6 +6,7 @@ import uuid
 import time
 import logging
 import threading
+import tempfile
 from typing import Dict, Any, List, Optional
 import yt_dlp
 from ffmpeg_utils import find_ffmpeg
@@ -12,12 +14,27 @@ from ffmpeg_utils import find_ffmpeg
 logger = logging.getLogger("yt_downloader")
 logger.setLevel(logging.INFO)
 
-DOWNLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "downloads"))
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+# Determine safe downloads directory (writable on local Windows and serverless /tmp)
+def get_downloads_dir() -> str:
+    # First attempt local downloads directory (for local dev)
+    try:
+        local_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "downloads"))
+        os.makedirs(local_dir, exist_ok=True)
+        # Test write permission
+        test_file = os.path.join(local_dir, ".perm_test")
+        with open(test_file, "w") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return local_dir
+    except (OSError, PermissionError):
+        # Fallback to system /tmp directory (essential for Vercel / AWS Lambda)
+        tmp_dir = os.path.join(tempfile.gettempdir(), "downloader_files")
+        os.makedirs(tmp_dir, exist_ok=True)
+        return tmp_dir
+
+DOWNLOADS_DIR = get_downloads_dir()
 
 # In-memory store for download tasks
-# In production with multiple workers this would use Redis, but for standalone fullstack FastAPI,
-# a thread-safe dict is fast, responsive, and has zero external dependencies.
 tasks_lock = threading.Lock()
 download_tasks: Dict[str, Dict[str, Any]] = {}
 
@@ -81,7 +98,6 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
         raise ValueError("Could not extract video metadata.")
 
     # Target resolution tiers
-    # We explicitly highlight 2160p (4K), 1440p (2K), 1080p (FHD), 720p, 480p, 360p
     target_tiers = [
         {"height": 2160, "name": "4K Ultra HD", "badge": "2160p (4K)", "is_4k": True},
         {"height": 1440, "name": "2K Quad HD", "badge": "1440p (2K)", "is_4k": False},
@@ -94,9 +110,9 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
     formats = info.get("formats", [])
     duration = info.get("duration", 0)
 
-    # Check best available audio format size/bitrate to add to video size estimate
+    # Check best available audio format size/bitrate
     best_audio_size = 0
-    best_audio_abr = 128  # kbps default fallback
+    best_audio_abr = 128
     for f in formats:
         if f.get("vcodec") == "none" and f.get("acodec") != "none":
             abr = f.get("abr") or 0
@@ -131,7 +147,6 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
                 "vcodec": f.get("vcodec", "video"),
             }
         else:
-            # Keep highest fps / best quality
             if fps > available_heights[h]["fps"]:
                 available_heights[h]["fps"] = fps
             if filesize and (not available_heights[h]["filesize"] or filesize > available_heights[h]["filesize"]):
@@ -141,17 +156,12 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
 
     max_height = max(available_heights.keys()) if available_heights else 1080
 
-    # Build resolution choices
     resolutions = []
     for tier in target_tiers:
         target_h = tier["height"]
-        # Find if this height is available or if video has at least this resolution
         is_available = any(h >= target_h for h in available_heights.keys()) if available_heights else True
-        
-        # Exact or closest format info
         best_match = available_heights.get(target_h)
         if not best_match:
-            # find closest available height <= target_h
             candidates = [h for h in available_heights.keys() if h <= target_h]
             if candidates:
                 best_match = available_heights[max(candidates)]
@@ -159,14 +169,12 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
         fps_val = best_match["fps"] if best_match else 60 if target_h >= 1080 else 30
         fps_label = f"{fps_val}fps" if fps_val else "30fps"
 
-        # Calculate estimated combined file size
         estimated_size = None
         if best_match and best_match.get("filesize"):
             estimated_size = best_match["filesize"] + best_audio_size
         elif best_match and best_match.get("vbr") and duration > 0:
             estimated_size = ((best_match["vbr"] + best_audio_abr) * 1000 / 8) * duration
         elif duration > 0:
-            # Standard estimated bitrates based on resolution
             bitrate_map = {2160: 25000, 1440: 12000, 1080: 5000, 720: 2500, 480: 1200, 360: 700}
             est_br = bitrate_map.get(target_h, 3000)
             estimated_size = (est_br * 1000 / 8) * duration
@@ -185,7 +193,6 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
             "format_string": f"bestvideo[height<={target_h}]+bestaudio/best[height<={target_h}]/best",
         })
 
-    # Add Audio-Only (MP3 / High Quality M4A)
     audio_est_size = format_bytes(best_audio_size) if best_audio_size else "3 - 10 MB"
     resolutions.append({
         "height": 0,
@@ -199,11 +206,9 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
         "format_string": "bestaudio/best",
     })
 
-    # Thumbnail selection (prefer high quality)
     thumbnails = info.get("thumbnails", [])
     thumbnail_url = info.get("thumbnail")
     if thumbnails:
-        # Sort by width or preference
         sorted_thumbs = sorted(
             [t for t in thumbnails if t.get("url")],
             key=lambda t: (t.get("width") or 0) * (t.get("height") or 0),
@@ -235,7 +240,8 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
     """
     Background worker that runs yt-dlp to download and merge 4K video + audio via FFmpeg.
     """
-    task_dir = os.path.join(DOWNLOADS_DIR, task_id)
+    downloads_root = get_downloads_dir()
+    task_dir = os.path.join(downloads_root, task_id)
     os.makedirs(task_dir, exist_ok=True)
     ffmpeg_dir = find_ffmpeg()
 
@@ -257,7 +263,6 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
             eta_str = d.get("_eta_str") or ""
             filename = os.path.basename(d.get("filename", ""))
 
-            # Detect whether currently downloading video or audio stream
             stage = "Downloading video stream..."
             if "audio" in filename.lower() or d.get("info_dict", {}).get("acodec") and not d.get("info_dict", {}).get("vcodec"):
                 stage = "Downloading audio stream..."
@@ -284,18 +289,12 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
     try:
         update_task(status="starting", stage="Initializing yt-dlp download...", percent=5.0)
 
-        # 4K / High Resolution format string requirement:
-        # Must pull bestvideo[height<=target]+bestaudio/best
         if is_audio_only:
             format_str = "bestaudio/best"
-            ext = "mp3"
         elif height > 0:
-            # 4K processing format string
             format_str = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
-            ext = "mp4"
         else:
             format_str = "bestvideo+bestaudio/best"
-            ext = "mp4"
 
         outtmpl = os.path.join(task_dir, "%(title).150B [%(id)s].%(ext)s")
 
@@ -317,7 +316,6 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
                 "preferredquality": "192",
             }]
         else:
-            # Merge 4K separate streams into standard MP4
             ydl_opts["merge_output_format"] = "mp4"
 
         if ffmpeg_dir:
@@ -328,7 +326,6 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        # Find the final produced file
         produced_files = [
             f for f in os.listdir(task_dir)
             if not f.endswith(".part") and not f.endswith(".ytdl") and not f.endswith(".temp")
@@ -337,7 +334,6 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
         if not produced_files:
             raise FileNotFoundError("Merged video file could not be found after processing.")
 
-        # Sort to find the largest/newest file
         produced_files.sort(key=lambda f: os.path.getsize(os.path.join(task_dir, f)), reverse=True)
         final_filename = produced_files[0]
         final_filepath = os.path.join(task_dir, final_filename)
@@ -358,7 +354,7 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
         logger.exception("Download failed:")
         error_msg = str(e)
         if "ffmpeg" in error_msg.lower():
-            error_msg += " (FFmpeg is required to merge 4K video and audio. Please install FFmpeg on your machine)."
+            error_msg += " (FFmpeg is required to merge 4K video and audio tracks)."
         update_task(
             status="error",
             stage="Failed",
@@ -367,9 +363,6 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
 
 
 def start_download_task(url: str, height: int, is_audio_only: bool = False) -> str:
-    """
-    Initiates a background download task and returns task_id.
-    """
     task_id = str(uuid.uuid4())
     with tasks_lock:
         download_tasks[task_id] = {
@@ -405,10 +398,8 @@ def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
 
 
 def cleanup_task_files(task_id: str):
-    """
-    Clean up downloaded files after serving.
-    """
-    task_dir = os.path.join(DOWNLOADS_DIR, task_id)
+    downloads_root = get_downloads_dir()
+    task_dir = os.path.join(downloads_root, task_id)
     if os.path.exists(task_dir):
         try:
             for item in os.listdir(task_dir):
@@ -420,4 +411,3 @@ def cleanup_task_files(task_id: str):
             logger.warning(f"Error cleaning up task {task_id}: {e}")
     with tasks_lock:
         download_tasks.pop(task_id, None)
-

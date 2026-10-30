@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: ultra-4k-downloader
+    env: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/system-status

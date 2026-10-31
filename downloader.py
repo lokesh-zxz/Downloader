@@ -84,12 +84,35 @@ def format_bytes(b: Optional[float]) -> str:
 def clean_filename(filename: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "", filename)
 
+def get_cookie_file() -> Optional[str]:
+    """
+    Search for cookies.txt or extract from YOUTUBE_COOKIES env var.
+    Enables bypassing YouTube cloud server / datacenter IP bot detection.
+    """
+    # 1. Check local cookies.txt in workspace
+    local_cookie = os.path.join(os.path.dirname(__file__), "cookies.txt")
+    if os.path.exists(local_cookie) and os.path.getsize(local_cookie) > 0:
+        return local_cookie
+
+    # 2. Check YOUTUBE_COOKIES or COOKIES_CONTENT env var (ideal for Render)
+    cookies_content = os.environ.get("YOUTUBE_COOKIES") or os.environ.get("COOKIES_CONTENT")
+    if cookies_content:
+        cookie_path = os.path.join(tempfile.gettempdir(), "cookies.txt")
+        try:
+            with open(cookie_path, "w", encoding="utf-8") as f:
+                f.write(cookies_content)
+            return cookie_path
+        except Exception:
+            pass
+    return None
+
 def fetch_video_metadata(url: str) -> Dict[str, Any]:
     """
     Extract video title, thumbnail, duration, author, and available resolutions
     (including 4K/2160p, 1440p, 1080p, 720p, etc.).
     """
     ffmpeg_dir = find_ffmpeg()
+    cookie_file = get_cookie_file()
 
     ydl_opts = {
         "skip_download": True,
@@ -100,7 +123,14 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
         "nocheckcertificate": True,
         "http_headers": DEFAULT_HEADERS,
         "socket_timeout": 20,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "mweb", "web"]
+            }
+        }
     }
+    if cookie_file:
+        ydl_opts["cookiefile"] = cookie_file
     if CHROME_TARGET:
         ydl_opts["impersonate"] = CHROME_TARGET
     if ffmpeg_dir:
@@ -111,7 +141,9 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
             info = ydl.extract_info(url, download=False)
         except Exception as e:
             err_str = str(e)
-            if "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
+            if "Sign in to confirm you're not a bot" in err_str:
+                err_str = "YouTube bot check triggered on cloud server. Mobile client fallback was attempted; if it persists, set YOUTUBE_COOKIES in Render Environment Variables or run locally."
+            elif "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
                 err_str = "SSL handshake failed or connection closed by host/ISP. If this site is restricted by your local network/ISP, enable a VPN to fetch."
             elif "timed out" in err_str.lower():
                 err_str = "Connection to video host timed out. The provider might be blocked or unreachable from your current IP."
@@ -336,7 +368,21 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
             "no_warnings": False,
             "retries": 10,
             "fragment_retries": 10,
+            "nocheckcertificate": True,
+            "http_headers": DEFAULT_HEADERS,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb", "web"]
+                }
+            }
         }
+
+        cookie_file = get_cookie_file()
+        if cookie_file:
+            ydl_opts["cookiefile"] = cookie_file
+
+        if CHROME_TARGET:
+            ydl_opts["impersonate"] = CHROME_TARGET
 
         if is_audio_only:
             if ffmpeg_dir:

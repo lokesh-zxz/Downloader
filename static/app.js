@@ -51,22 +51,22 @@ const modalGotItBtn = document.getElementById("modalGotItBtn");
 const copyCmdBtn = document.getElementById("copyCmdBtn");
 const copyText = document.getElementById("copyText");
 
-// Check FFmpeg status on startup
+// Check FFmpeg status on startup (Apple pill style)
 async function checkFFmpegStatus() {
   try {
     const res = await fetch("/api/system-status");
     const data = await res.json();
     if (data.installed) {
-      ffmpegStatusBtn.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:border-emerald-400";
+      ffmpegStatusBtn.className = "apple-btn flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 transition-all";
       ffmpegStatusBtn.innerHTML = `
-        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-        <span>FFmpeg Ready (4K Merging Active)</span>
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span class="tabular-nums">FFmpeg Ready</span>
       `;
     } else {
-      ffmpegStatusBtn.className = "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 bg-amber-950/60 border-amber-500/40 text-amber-300 hover:border-amber-400 cursor-pointer";
+      ffmpegStatusBtn.className = "apple-btn flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-amber-500/25 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer transition-all";
       ffmpegStatusBtn.innerHTML = `
-        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-        <span>FFmpeg Not Detected (Click to Setup)</span>
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+        <span class="tabular-nums">Install FFmpeg (4K Merging)</span>
       `;
       ffmpegStatusBtn.onclick = () => ffmpegModal.classList.remove("hidden");
     }
@@ -88,7 +88,7 @@ if (copyCmdBtn) {
   copyCmdBtn.onclick = () => {
     const cmd = document.getElementById("cmdWin").innerText;
     navigator.clipboard.writeText(cmd).then(() => {
-      copyText.innerText = "Copied!";
+      copyText.innerText = "Copied";
       setTimeout(() => { copyText.innerText = "Copy"; }, 2000);
     });
   };
@@ -174,14 +174,14 @@ async function triggerFetch() {
     showError(err.message || "Failed to connect to backend server.");
   } finally {
     fetchBtn.disabled = false;
-    fetchBtnText.innerText = "Fetch Video";
+    fetchBtnText.innerText = "Fetch";
     fetchBtnIcon.classList.remove("hidden");
     fetchSpinner.classList.add("hidden");
     loadingCard.classList.add("hidden");
   }
 }
 
-// Render Video Details
+// Render Video Details with Apple Cards
 function renderVideoMetadata(data) {
   videoThumb.src = data.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60";
   videoTitle.innerText = data.title;
@@ -205,40 +205,42 @@ function renderVideoMetadata(data) {
     || resolutions.find(r => r.is_available)
     || resolutions[0];
 
-  resolutions.forEach((res, idx) => {
+  resolutions.forEach((res) => {
     const isSelected = selectedResolution && (selectedResolution.height === res.height && selectedResolution.type === res.type);
     const card = document.createElement("div");
-    card.className = `resolution-card p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-      isSelected ? "selected border-brand-500 bg-brand-500/10" : "border-white/10 bg-slate-900/60 hover:border-white/20"
-    } ${!res.is_available ? "opacity-50" : ""}`;
+    card.className = `apple-card p-3 rounded-xl cursor-pointer flex items-center justify-between ${
+      isSelected ? "selected" : ""
+    } ${!res.is_available ? "opacity-40 pointer-events-none" : ""}`;
 
-    // Resolution badge style
-    let badgeClass = "bg-slate-800 text-slate-300 border-slate-700";
-    if (res.is_4k) badgeClass = "bg-gradient-to-r from-amber-500/20 to-purple-500/20 text-amber-300 border-amber-500/30";
-    else if (res.height === 1440) badgeClass = "bg-cyan-500/20 text-cyan-300 border-cyan-500/30";
-    else if (res.height === 1080) badgeClass = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+    // Apple subtle tag styling
+    let tagClass = "bg-white/[0.06] text-slate-300 border-white/[0.08]";
+    if (res.is_4k) tagClass = "bg-apple-blue/20 text-blue-300 border-apple-blue/30";
+    else if (res.height === 1440) tagClass = "bg-purple-500/15 text-purple-300 border-purple-500/20";
+    else if (res.height === 1080) tagClass = "bg-emerald-500/15 text-emerald-300 border-emerald-500/20";
 
     card.innerHTML = `
       <div class="flex items-center space-x-3">
-        <div class="w-4 h-4 rounded-full border flex items-center justify-center ${isSelected ? 'border-brand-500 bg-brand-500' : 'border-slate-600'}">
+        <div class="w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+          isSelected ? 'border-apple-blue bg-apple-blue' : 'border-white/25 bg-transparent'
+        }">
           ${isSelected ? '<div class="w-1.5 h-1.5 rounded-full bg-white"></div>' : ''}
         </div>
         <div>
           <div class="flex items-center space-x-2">
-            <span class="text-xs sm:text-sm font-bold text-white">${res.name}</span>
-            <span class="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold border ${badgeClass}">${res.badge}</span>
+            <span class="text-xs font-semibold text-white tracking-tight">${res.name}</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded font-medium border ${tagClass}">${res.badge}</span>
           </div>
-          <span class="text-[11px] text-slate-400 font-mono">${res.fps} &bull; ${res.estimated_size}</span>
+          <span class="text-[11px] text-slate-400 tabular-nums">${res.fps} &bull; ${res.estimated_size}</span>
         </div>
       </div>
       <div>
-        ${res.is_4k ? '<span class="text-[10px] font-bold text-amber-400 tracking-wider">ULTRA HD</span>' : ''}
+        ${res.is_4k ? '<span class="text-[10px] font-semibold text-blue-400 uppercase tracking-wider">4K UHD</span>' : ''}
       </div>
     `;
 
     card.onclick = () => {
       selectedResolution = res;
-      renderVideoMetadata(data); // Re-render selection highlight
+      renderVideoMetadata(data);
     };
 
     resolutionGrid.appendChild(card);
@@ -252,7 +254,7 @@ function renderVideoMetadata(data) {
 function updateDownloadBtnText() {
   if (!selectedResolution) return;
   if (selectedResolution.type === "audio") {
-    startDownloadBtnText.innerText = "Download MP3 Audio (Lossless Extraction)";
+    startDownloadBtnText.innerText = "Download MP3 Audio (Lossless)";
   } else if (selectedResolution.is_4k) {
     startDownloadBtnText.innerText = "Download 4K Ultra HD (2160p) with Merged Audio";
   } else {
@@ -267,13 +269,12 @@ startDownloadBtn.onclick = async () => {
   hideError();
   progressCard.classList.remove("hidden");
   downloadReadyNotice.classList.add("hidden");
-  progressBar.style.width = "5%";
+  progressBar.style.width = "4%";
   progressPercent.innerText = "0%";
-  progressStage.innerText = "Initializing 4K merger task...";
+  progressStage.innerText = "Initializing download worker...";
   statSpeed.innerText = "--";
   statEta.innerText = "--";
 
-  // Scroll to progress
   progressCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
   try {
@@ -323,30 +324,28 @@ function pollTaskStatus(taskId) {
       const task = await res.json();
 
       if (task.status === "downloading" || task.status === "starting") {
-        progressBar.style.width = `${Math.max(5, task.percent || 10)}%`;
+        progressBar.style.width = `${Math.max(4, task.percent || 8)}%`;
         progressPercent.innerText = `${task.percent || 0}%`;
-        progressStage.innerText = task.stage || "Downloading streams...";
+        progressStage.innerText = task.stage || "Downloading stream tracks...";
         statSpeed.innerText = task.speed || "Calculating...";
         statEta.innerText = task.eta || "Calculating...";
       } else if (task.status === "processing") {
         progressBar.style.width = "99%";
         progressPercent.innerText = "99%";
         progressStage.innerText = task.stage || "Merging 4K video & audio with FFmpeg...";
-        statSpeed.innerText = "FFmpeg Active";
-        statEta.innerText = "Finishing";
+        statSpeed.innerText = "Merging";
+        statEta.innerText = "Finalizing";
       } else if (task.status === "completed") {
         clearInterval(activePollInterval);
         progressBar.style.width = "100%";
         progressPercent.innerText = "100%";
-        progressStage.innerText = "Complete! Merged file ready.";
-        statSpeed.innerText = "Done";
+        progressStage.innerText = "Finished. Ready for playback.";
+        statSpeed.innerText = "Complete";
         statEta.innerText = "0s";
 
-        // Show completed notification
         downloadReadyNotice.classList.remove("hidden");
         manualDownloadLink.href = task.download_url;
 
-        // Auto-trigger browser download delivery
         triggerBrowserDownload(task.download_url);
 
         startDownloadBtn.disabled = false;
@@ -377,4 +376,3 @@ function triggerBrowserDownload(url) {
   hiddenLink.click();
   document.body.removeChild(hiddenLink);
 }
-

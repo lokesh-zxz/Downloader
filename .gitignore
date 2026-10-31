@@ -42,6 +42,11 @@ downloads/
 *.ytdl
 *.temp
 
+# Agents & tooling
+.aider-desk/
+skills-lock.json
+
+
 # IDEs & OS
 .vscode/
 .idea/

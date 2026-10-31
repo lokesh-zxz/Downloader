@@ -292,7 +292,13 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
         if is_audio_only:
             format_str = "bestaudio/best"
         elif height > 0:
-            format_str = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+            format_str = (
+                f"bestvideo[height={height}]+bestaudio/"
+                f"best[height={height}]/"
+                f"bestvideo[height<={height}]+bestaudio/"
+                f"best[height<={height}]/"
+                f"best"
+            )
         else:
             format_str = "bestvideo+bestaudio/best"
 
@@ -310,11 +316,12 @@ def download_worker(task_id: str, url: str, height: int, is_audio_only: bool):
         }
 
         if is_audio_only:
-            ydl_opts["postprocessors"] = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }]
+            if ffmpeg_dir:
+                ydl_opts["postprocessors"] = [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }]
         else:
             ydl_opts["merge_output_format"] = "mp4"
 

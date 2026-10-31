@@ -39,6 +39,7 @@ const progressCard = document.getElementById("progressCard");
 const progressPercent = document.getElementById("progressPercent");
 const progressBar = document.getElementById("progressBar");
 const progressStage = document.getElementById("progressStage");
+const progressTitle = document.getElementById("progressTitle");
 const statSpeed = document.getElementById("statSpeed");
 const statEta = document.getElementById("statEta");
 const downloadReadyNotice = document.getElementById("downloadReadyNotice");
@@ -146,6 +147,8 @@ async function triggerFetch() {
   hideError();
   resultCard.classList.add("hidden");
   progressCard.classList.add("hidden");
+  currentVideoData = null;
+  selectedResolution = null; // Clear previous video selection
   if (activePollInterval) clearInterval(activePollInterval);
 
   // Set loading state
@@ -195,22 +198,30 @@ function renderVideoMetadata(data) {
     badge4k.classList.add("hidden");
   }
 
-  // Populate Resolutions
-  resolutionGrid.innerHTML = "";
   const resolutions = data.resolutions || [];
 
-  // Default selection: pick 2160p if available, else 1080p, else first available
-  selectedResolution = resolutions.find(r => r.height === 2160 && r.is_available)
-    || resolutions.find(r => r.height === 1080 && r.is_available)
-    || resolutions.find(r => r.is_available)
-    || resolutions[0];
+  // ONLY set default selection if nothing is currently selected
+  if (!selectedResolution) {
+    selectedResolution = resolutions.find(r => r.height === 2160 && r.is_available)
+      || resolutions.find(r => r.height === 1080 && r.is_available)
+      || resolutions.find(r => r.is_available)
+      || resolutions[0];
+  }
 
-  resolutions.forEach((res) => {
-    const isSelected = selectedResolution && (selectedResolution.height === res.height && selectedResolution.type === res.type);
+  // Populate Resolutions Grid
+  resolutionGrid.innerHTML = "";
+
+  resolutions.forEach((res, idx) => {
+    const isSelected = selectedResolution && (
+      (res.type === "audio" && selectedResolution.type === "audio") ||
+      (res.type === "video" && selectedResolution.type === "video" && selectedResolution.height === res.height)
+    );
+
     const card = document.createElement("div");
-    card.className = `apple-card p-3 rounded-xl cursor-pointer flex items-center justify-between ${
+    card.setAttribute("data-res-idx", idx);
+    card.className = `apple-card p-3 rounded-xl cursor-pointer flex items-center justify-between select-none ${
       isSelected ? "selected" : ""
-    } ${!res.is_available ? "opacity-40 pointer-events-none" : ""}`;
+    } ${!res.is_available ? "opacity-40" : ""}`;
 
     // Apple subtle tag styling
     let tagClass = "bg-white/[0.06] text-slate-300 border-white/[0.08]";
@@ -219,8 +230,8 @@ function renderVideoMetadata(data) {
     else if (res.height === 1080) tagClass = "bg-emerald-500/15 text-emerald-300 border-emerald-500/20";
 
     card.innerHTML = `
-      <div class="flex items-center space-x-3">
-        <div class="w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+      <div class="flex items-center space-x-3 pointer-events-none">
+        <div class="radio-indicator w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
           isSelected ? 'border-apple-blue bg-apple-blue' : 'border-white/25 bg-transparent'
         }">
           ${isSelected ? '<div class="w-1.5 h-1.5 rounded-full bg-white"></div>' : ''}
@@ -233,15 +244,42 @@ function renderVideoMetadata(data) {
           <span class="text-[11px] text-slate-400 tabular-nums">${res.fps} &bull; ${res.estimated_size}</span>
         </div>
       </div>
-      <div>
+      <div class="pointer-events-none">
         ${res.is_4k ? '<span class="text-[10px] font-semibold text-blue-400 uppercase tracking-wider">4K UHD</span>' : ''}
       </div>
     `;
 
-    card.onclick = () => {
+    // Interactive Selection Handler: Updates selectedResolution and DOM state immediately
+    card.addEventListener("click", () => {
       selectedResolution = res;
-      renderVideoMetadata(data);
-    };
+
+      // Update all cards visually
+      const allCards = resolutionGrid.querySelectorAll(".apple-card");
+      allCards.forEach((c, cIdx) => {
+        const item = resolutions[cIdx];
+        const match = item && (
+          (item.type === "audio" && res.type === "audio") ||
+          (item.type === "video" && res.type === "video" && item.height === res.height)
+        );
+
+        const radio = c.querySelector(".radio-indicator");
+        if (match) {
+          c.classList.add("selected");
+          if (radio) {
+            radio.className = "radio-indicator w-4 h-4 rounded-full border border-apple-blue bg-apple-blue flex items-center justify-center transition-all";
+            radio.innerHTML = '<div class="w-1.5 h-1.5 rounded-full bg-white"></div>';
+          }
+        } else {
+          c.classList.remove("selected");
+          if (radio) {
+            radio.className = "radio-indicator w-4 h-4 rounded-full border border-white/25 bg-transparent flex items-center justify-center transition-all";
+            radio.innerHTML = '';
+          }
+        }
+      });
+
+      updateDownloadBtnText();
+    });
 
     resolutionGrid.appendChild(card);
   });
@@ -258,7 +296,7 @@ function updateDownloadBtnText() {
   } else if (selectedResolution.is_4k) {
     startDownloadBtnText.innerText = "Download 4K Ultra HD (2160p) with Merged Audio";
   } else {
-    startDownloadBtnText.innerText = `Download ${selectedResolution.badge} MP4`;
+    startDownloadBtnText.innerText = `Download ${selectedResolution.badge || selectedResolution.name} MP4`;
   }
 }
 
@@ -271,6 +309,11 @@ startDownloadBtn.onclick = async () => {
   downloadReadyNotice.classList.add("hidden");
   progressBar.style.width = "4%";
   progressPercent.innerText = "0%";
+  
+  const qualityLabel = selectedResolution.badge || selectedResolution.name || "Video";
+  if (progressTitle) {
+    progressTitle.innerText = `Processing ${qualityLabel}`;
+  }
   progressStage.innerText = "Initializing download worker...";
   statSpeed.innerText = "--";
   statEta.innerText = "--";
@@ -332,7 +375,7 @@ function pollTaskStatus(taskId) {
       } else if (task.status === "processing") {
         progressBar.style.width = "99%";
         progressPercent.innerText = "99%";
-        progressStage.innerText = task.stage || "Merging 4K video & audio with FFmpeg...";
+        progressStage.innerText = task.stage || "Merging video & audio with FFmpeg...";
         statSpeed.innerText = "Merging";
         statEta.innerText = "Finalizing";
       } else if (task.status === "completed") {

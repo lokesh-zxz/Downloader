@@ -11,6 +11,19 @@ from typing import Dict, Any, List, Optional
 import yt_dlp
 from ffmpeg_utils import find_ffmpeg
 
+# Optional browser TLS impersonation (bypasses Cloudflare & strict ISP/TLS restrictions)
+try:
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+    CHROME_TARGET = ImpersonateTarget.from_str("chrome")
+except Exception:
+    CHROME_TARGET = None
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 logger = logging.getLogger("yt_downloader")
 logger.setLevel(logging.INFO)
 
@@ -84,7 +97,12 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": False,
+        "nocheckcertificate": True,
+        "http_headers": DEFAULT_HEADERS,
+        "socket_timeout": 20,
     }
+    if CHROME_TARGET:
+        ydl_opts["impersonate"] = CHROME_TARGET
     if ffmpeg_dir:
         ydl_opts["ffmpeg_location"] = ffmpeg_dir
 
@@ -92,7 +110,12 @@ def fetch_video_metadata(url: str) -> Dict[str, Any]:
         try:
             info = ydl.extract_info(url, download=False)
         except Exception as e:
-            raise ValueError(f"Failed to fetch video: {str(e)}")
+            err_str = str(e)
+            if "UNEXPECTED_EOF" in err_str or "SSL" in err_str:
+                err_str = "SSL handshake failed or connection closed by host/ISP. If this site is restricted by your local network/ISP, enable a VPN to fetch."
+            elif "timed out" in err_str.lower():
+                err_str = "Connection to video host timed out. The provider might be blocked or unreachable from your current IP."
+            raise ValueError(f"Failed to fetch video: {err_str}")
 
     if not info:
         raise ValueError("Could not extract video metadata.")

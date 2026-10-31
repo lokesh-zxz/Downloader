@@ -9,6 +9,53 @@ let currentVideoData = null;
 let selectedResolution = null;
 let activePollInterval = null;
 
+// Sonner-style Toast Notification System (Emil Kowalski philosophy)
+const sonnerContainer = document.getElementById("sonnerContainer");
+
+function showToast(message, type = "info", duration = 4000) {
+  if (!sonnerContainer) return;
+
+  const toast = document.createElement("div");
+  toast.className = "sonner-toast";
+
+  let iconHtml = '<i data-lucide="info" class="w-4 h-4 text-blue-400 flex-shrink-0"></i>';
+  if (type === "error") {
+    iconHtml = '<i data-lucide="alert-circle" class="w-4 h-4 text-rose-400 flex-shrink-0"></i>';
+  } else if (type === "success") {
+    iconHtml = '<i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>';
+  }
+
+  toast.innerHTML = `
+    ${iconHtml}
+    <div class="flex-1 text-xs leading-relaxed">${message}</div>
+    <button class="tactile-btn text-slate-400 hover:text-white p-1">
+      <i data-lucide="x" class="w-3.5 h-3.5"></i>
+    </button>
+  `;
+
+  const closeBtn = toast.querySelector("button");
+  const dismiss = () => {
+    toast.classList.remove("visible");
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 250);
+  };
+
+  closeBtn.onclick = dismiss;
+
+  sonnerContainer.appendChild(toast);
+  if (window.lucide) lucide.createIcons();
+
+  // Animate in via class
+  requestAnimationFrame(() => {
+    toast.classList.add("visible");
+  });
+
+  if (duration > 0) {
+    setTimeout(dismiss, duration);
+  }
+}
+
 // DOM Elements
 const videoUrlInput = document.getElementById("videoUrl");
 const fetchForm = document.getElementById("fetchForm");
@@ -20,9 +67,6 @@ const pasteBtn = document.getElementById("pasteBtn");
 
 const loadingCard = document.getElementById("loadingCard");
 const resultCard = document.getElementById("resultCard");
-const errorAlert = document.getElementById("errorAlert");
-const errorMessage = document.getElementById("errorMessage");
-const closeErrorBtn = document.getElementById("closeErrorBtn");
 
 const videoThumb = document.getElementById("videoThumb");
 const videoTitle = document.getElementById("videoTitle");
@@ -52,22 +96,22 @@ const modalGotItBtn = document.getElementById("modalGotItBtn");
 const copyCmdBtn = document.getElementById("copyCmdBtn");
 const copyText = document.getElementById("copyText");
 
-// Check FFmpeg status on startup (Apple pill style)
+// Check FFmpeg status
 async function checkFFmpegStatus() {
   try {
     const res = await fetch("/api/system-status");
     const data = await res.json();
     if (data.installed) {
-      ffmpegStatusBtn.className = "apple-btn flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15 transition-all";
+      ffmpegStatusBtn.className = "tactile-btn flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15";
       ffmpegStatusBtn.innerHTML = `
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-        <span class="tabular-nums">FFmpeg Ready</span>
+        <span class="tnum text-[11px]">FFmpeg Ready</span>
       `;
     } else {
-      ffmpegStatusBtn.className = "apple-btn flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-amber-500/25 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer transition-all";
+      ffmpegStatusBtn.className = "tactile-btn flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-amber-500/25 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 cursor-pointer";
       ffmpegStatusBtn.innerHTML = `
         <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-        <span class="tabular-nums">Install FFmpeg (4K Merging)</span>
+        <span class="tnum text-[11px]">Install FFmpeg</span>
       `;
       ffmpegStatusBtn.onclick = () => ffmpegModal.classList.remove("hidden");
     }
@@ -90,6 +134,7 @@ if (copyCmdBtn) {
     const cmd = document.getElementById("cmdWin").innerText;
     navigator.clipboard.writeText(cmd).then(() => {
       copyText.innerText = "Copied";
+      showToast("Command copied to clipboard", "success", 2500);
       setTimeout(() => { copyText.innerText = "Copy"; }, 2000);
     });
   };
@@ -110,29 +155,13 @@ if (pasteBtn) {
   };
 }
 
-// Sample links
+// Quick Sample links
 document.querySelectorAll(".sample-link").forEach(btn => {
   btn.onclick = () => {
     videoUrlInput.value = btn.dataset.url;
     triggerFetch();
   };
 });
-
-// Close error
-if (closeErrorBtn) {
-  closeErrorBtn.onclick = () => errorAlert.classList.add("hidden");
-}
-
-function showError(msg) {
-  errorMessage.innerText = msg;
-  errorAlert.classList.remove("hidden");
-  loadingCard.classList.add("hidden");
-  if (window.lucide) lucide.createIcons();
-}
-
-function hideError() {
-  errorAlert.classList.add("hidden");
-}
 
 // Form Submission
 fetchForm.onsubmit = (e) => {
@@ -144,16 +173,15 @@ async function triggerFetch() {
   const url = videoUrlInput.value.trim();
   if (!url) return;
 
-  hideError();
   resultCard.classList.add("hidden");
   progressCard.classList.add("hidden");
   currentVideoData = null;
-  selectedResolution = null; // Clear previous video selection
+  selectedResolution = null; // Clear previous selection
   if (activePollInterval) clearInterval(activePollInterval);
 
   // Set loading state
   fetchBtn.disabled = true;
-  fetchBtnText.innerText = "Fetching...";
+  fetchBtnText.innerText = "Inspecting...";
   fetchBtnIcon.classList.add("hidden");
   fetchSpinner.classList.remove("hidden");
   loadingCard.classList.remove("hidden");
@@ -168,23 +196,24 @@ async function triggerFetch() {
     const data = await res.json();
 
     if (!res.ok) {
-      throw new Error(data.detail || "Failed to extract video information.");
+      throw new Error(data.detail || "Failed to inspect video stream.");
     }
 
     currentVideoData = data;
     renderVideoMetadata(data);
+    showToast(`Loaded "${data.title.slice(0, 40)}..."`, "success", 3000);
   } catch (err) {
-    showError(err.message || "Failed to connect to backend server.");
+    showToast(err.message || "Failed to connect to backend server.", "error", 6000);
   } finally {
     fetchBtn.disabled = false;
-    fetchBtnText.innerText = "Fetch";
+    fetchBtnText.innerText = "Inspect";
     fetchBtnIcon.classList.remove("hidden");
     fetchSpinner.classList.add("hidden");
     loadingCard.classList.add("hidden");
   }
 }
 
-// Render Video Details with Apple Cards
+// Render Video Details
 function renderVideoMetadata(data) {
   videoThumb.src = data.thumbnail || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=60";
   videoTitle.innerText = data.title;
@@ -200,7 +229,7 @@ function renderVideoMetadata(data) {
 
   const resolutions = data.resolutions || [];
 
-  // ONLY set default selection if nothing is currently selected
+  // Default selection: pick 2160p if available, else 1080p, else first available
   if (!selectedResolution) {
     selectedResolution = resolutions.find(r => r.height === 2160 && r.is_available)
       || resolutions.find(r => r.height === 1080 && r.is_available)
@@ -219,33 +248,32 @@ function renderVideoMetadata(data) {
 
     const card = document.createElement("div");
     card.setAttribute("data-res-idx", idx);
-    card.className = `apple-card p-3 rounded-xl cursor-pointer flex items-center justify-between select-none ${
+    card.className = `format-card p-2.5 rounded-xl cursor-pointer flex items-center justify-between select-none ${
       isSelected ? "selected" : ""
-    } ${!res.is_available ? "opacity-40" : ""}`;
+    } ${!res.is_available ? "opacity-35 pointer-events-none" : ""}`;
 
-    // Apple subtle tag styling
-    let tagClass = "bg-white/[0.06] text-slate-300 border-white/[0.08]";
-    if (res.is_4k) tagClass = "bg-apple-blue/20 text-blue-300 border-apple-blue/30";
+    let tagClass = "bg-white/[0.05] text-slate-300 border-white/[0.08]";
+    if (res.is_4k) tagClass = "bg-blue-500/20 text-blue-300 border-blue-500/30";
     else if (res.height === 1440) tagClass = "bg-purple-500/15 text-purple-300 border-purple-500/20";
     else if (res.height === 1080) tagClass = "bg-emerald-500/15 text-emerald-300 border-emerald-500/20";
 
     card.innerHTML = `
-      <div class="flex items-center space-x-3 pointer-events-none">
-        <div class="radio-indicator w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
-          isSelected ? 'border-apple-blue bg-apple-blue' : 'border-white/25 bg-transparent'
+      <div class="flex items-center space-x-2.5 pointer-events-none">
+        <div class="radio-indicator w-3.5 h-3.5 rounded-full border flex items-center justify-center transition-all ${
+          isSelected ? 'border-brand-blue bg-brand-blue' : 'border-white/20 bg-transparent'
         }">
           ${isSelected ? '<div class="w-1.5 h-1.5 rounded-full bg-white"></div>' : ''}
         </div>
         <div>
-          <div class="flex items-center space-x-2">
+          <div class="flex items-center space-x-1.5">
             <span class="text-xs font-semibold text-white tracking-tight">${res.name}</span>
-            <span class="text-[10px] px-1.5 py-0.2 rounded font-medium border ${tagClass}">${res.badge}</span>
+            <span class="text-[9px] px-1 py-0.2 rounded font-medium border ${tagClass}">${res.badge}</span>
           </div>
-          <span class="text-[11px] text-slate-400 tabular-nums">${res.fps} &bull; ${res.estimated_size}</span>
+          <span class="text-[10px] text-slate-400 tnum">${res.fps} &bull; ${res.estimated_size}</span>
         </div>
       </div>
       <div class="pointer-events-none">
-        ${res.is_4k ? '<span class="text-[10px] font-semibold text-blue-400 uppercase tracking-wider">4K UHD</span>' : ''}
+        ${res.is_4k ? '<span class="text-[9px] font-semibold text-blue-400 uppercase tracking-wider">4K UHD</span>' : ''}
       </div>
     `;
 
@@ -253,8 +281,8 @@ function renderVideoMetadata(data) {
     card.addEventListener("click", () => {
       selectedResolution = res;
 
-      // Update all cards visually
-      const allCards = resolutionGrid.querySelectorAll(".apple-card");
+      // Update all cards visually without rerendering
+      const allCards = resolutionGrid.querySelectorAll(".format-card");
       allCards.forEach((c, cIdx) => {
         const item = resolutions[cIdx];
         const match = item && (
@@ -266,13 +294,13 @@ function renderVideoMetadata(data) {
         if (match) {
           c.classList.add("selected");
           if (radio) {
-            radio.className = "radio-indicator w-4 h-4 rounded-full border border-apple-blue bg-apple-blue flex items-center justify-center transition-all";
+            radio.className = "radio-indicator w-3.5 h-3.5 rounded-full border border-brand-blue bg-brand-blue flex items-center justify-center transition-all";
             radio.innerHTML = '<div class="w-1.5 h-1.5 rounded-full bg-white"></div>';
           }
         } else {
           c.classList.remove("selected");
           if (radio) {
-            radio.className = "radio-indicator w-4 h-4 rounded-full border border-white/25 bg-transparent flex items-center justify-center transition-all";
+            radio.className = "radio-indicator w-3.5 h-3.5 rounded-full border border-white/20 bg-transparent flex items-center justify-center transition-all";
             radio.innerHTML = '';
           }
         }
@@ -304,7 +332,6 @@ function updateDownloadBtnText() {
 startDownloadBtn.onclick = async () => {
   if (!currentVideoData || !selectedResolution) return;
 
-  hideError();
   progressCard.classList.remove("hidden");
   downloadReadyNotice.classList.add("hidden");
   progressBar.style.width = "4%";
@@ -314,7 +341,7 @@ startDownloadBtn.onclick = async () => {
   if (progressTitle) {
     progressTitle.innerText = `Processing ${qualityLabel}`;
   }
-  progressStage.innerText = "Initializing download worker...";
+  progressStage.innerText = "Initializing worker...";
   statSpeed.innerText = "--";
   statEta.innerText = "--";
 
@@ -342,10 +369,11 @@ startDownloadBtn.onclick = async () => {
     }
 
     const taskId = data.task_id;
+    showToast(`Download started for ${qualityLabel}`, "info", 3000);
     pollTaskStatus(taskId);
 
   } catch (err) {
-    showError(err.message || "Failed to start download.");
+    showToast(err.message || "Failed to start download.", "error", 6000);
     startDownloadBtn.disabled = false;
     startDownloadBtn.classList.remove("opacity-50", "cursor-not-allowed");
     progressCard.classList.add("hidden");
@@ -390,6 +418,7 @@ function pollTaskStatus(taskId) {
         manualDownloadLink.href = task.download_url;
 
         triggerBrowserDownload(task.download_url);
+        showToast("Download finished! File sent to your browser.", "success", 5000);
 
         startDownloadBtn.disabled = false;
         startDownloadBtn.classList.remove("opacity-50", "cursor-not-allowed");
@@ -398,14 +427,14 @@ function pollTaskStatus(taskId) {
         startDownloadBtn.disabled = false;
         startDownloadBtn.classList.remove("opacity-50", "cursor-not-allowed");
         progressCard.classList.add("hidden");
-        showError(task.error || "An error occurred during video download and merge.");
+        showToast(task.error || "An error occurred during video download and merge.", "error", 7000);
       }
 
     } catch (err) {
       clearInterval(activePollInterval);
       startDownloadBtn.disabled = false;
       startDownloadBtn.classList.remove("opacity-50", "cursor-not-allowed");
-      showError(err.message);
+      showToast(err.message, "error", 6000);
     }
   }, 1000);
 }

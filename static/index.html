@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ultra 4K &bull; Video Downloader</title>
+  <title>Ultra 4K &bull; Cinema Video Downloader</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -14,13 +14,17 @@
       theme: {
         extend: {
           colors: {
-            apple: {
+            brand: {
               blue: '#0071e3',
               blueHover: '#0077ed',
-              dark: '#080a0f',
-              surface: '#11141c',
-              border: 'rgba(255, 255, 255, 0.09)',
-              specular: 'rgba(255, 255, 255, 0.16)',
+              accent: '#3b82f6',
+            },
+            canvas: {
+              950: '#07090e',
+              900: '#0c0f17',
+              850: '#111520',
+              800: '#171c2b',
+              700: '#232b40',
             }
           }
         }
@@ -28,72 +32,115 @@
     }
   </script>
   <style>
-    /* Apple Typography Foundation */
+    /* Emil Kowalski & Apple Typography */
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", system-ui, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", -system-ui, system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      background-color: #07090e;
+      color: #f1f5f9;
     }
 
-    .tabular-nums {
+    /* Tabular numerals for non-jittering timers and statistics */
+    .tnum {
       font-variant-numeric: tabular-nums;
       font-feature-settings: "tnum";
     }
 
-    .display-heading {
-      letter-spacing: -0.03em;
-      line-height: 1.08;
+    /* Emil's custom easing curves */
+    :root {
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+      --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+      --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* Apple Translucent Materials with Specular Top Highlight */
-    .apple-glass {
-      background: rgba(17, 20, 29, 0.76);
-      backdrop-filter: blur(30px) saturate(190%);
-      -webkit-backdrop-filter: blur(30px) saturate(190%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-top: 1px solid rgba(255, 255, 255, 0.16);
-      box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.3);
-    }
-
-    .apple-card {
-      background: rgba(255, 255, 255, 0.03);
+    /* Specular glass with directional top light */
+    .glass-surface {
+      background: rgba(14, 18, 28, 0.75);
+      backdrop-filter: blur(28px) saturate(190%);
+      -webkit-backdrop-filter: blur(28px) saturate(190%);
       border: 1px solid rgba(255, 255, 255, 0.07);
-      border-top: 1px solid rgba(255, 255, 255, 0.12);
-      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
 
-    .apple-card:hover {
-      background: rgba(255, 255, 255, 0.055);
-      border-color: rgba(255, 255, 255, 0.14);
+    /* Tactile button response on pointer-down */
+    .tactile-btn {
+      transition: transform 160ms var(--ease-out), background-color 160ms ease, opacity 160ms ease;
     }
-
-    .apple-card:active {
-      transform: scale(0.985);
-    }
-
-    .apple-card.selected {
-      background: rgba(0, 113, 227, 0.15);
-      border-color: rgba(0, 113, 227, 0.65);
-      border-top: 1px solid rgba(0, 113, 227, 0.9);
-      box-shadow: 0 0 0 1px rgba(0, 113, 227, 0.3), 0 10px 28px -6px rgba(0, 113, 227, 0.3);
-    }
-
-    /* Tactile Pointer-down Spring */
-    .apple-btn {
-      transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease, background 0.15s ease;
-    }
-    .apple-btn:active {
+    .tactile-btn:active {
       transform: scale(0.975);
     }
 
-    /* Modal Sheet Animation */
-    .modal-enter {
-      animation: appleSheet 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    /* Resolution selection cards with subtle depth */
+    .format-card {
+      background: rgba(255, 255, 255, 0.028);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      transition: transform 180ms var(--ease-out), border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
     }
-    @keyframes appleSheet {
+    @media (hover: hover) and (pointer: fine) {
+      .format-card:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.14);
+      }
+    }
+    .format-card:active {
+      transform: scale(0.985);
+    }
+    .format-card.selected {
+      background: rgba(0, 113, 227, 0.14);
+      border-color: rgba(0, 113, 227, 0.65);
+      border-top: 1px solid rgba(0, 113, 227, 0.95);
+      box-shadow: 0 0 0 1px rgba(0, 113, 227, 0.35), 0 12px 28px -6px rgba(0, 113, 227, 0.28);
+    }
+
+    /* Emil's Sonner-style Toast Container */
+    #sonnerContainer {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .sonner-toast {
+      pointer-events: auto;
+      background: rgba(18, 22, 34, 0.92);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.2);
+      border-radius: 14px;
+      padding: 12px 16px;
+      min-width: 300px;
+      max-width: 420px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: #f8fafc;
+      transform: translateY(20px) scale(0.96);
+      opacity: 0;
+      transition: transform 240ms var(--ease-spring), opacity 240ms ease;
+    }
+    .sonner-toast.visible {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+
+    /* Modal Animation with spring from origin */
+    .modal-sheet {
+      animation: modalSheet 280ms var(--ease-spring) forwards;
+    }
+    @keyframes modalSheet {
       from {
         opacity: 0;
-        transform: scale(0.95) translateY(12px);
+        transform: scale(0.95) translateY(14px);
       }
       to {
         opacity: 1;
@@ -101,13 +148,19 @@
       }
     }
 
-    /* Smooth Appearance Cross-Fade */
-    .fade-in {
-      animation: appleFade 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    /* Smooth content entrance without scale(0) */
+    .reveal-in {
+      animation: revealIn 300ms var(--ease-out) forwards;
     }
-    @keyframes appleFade {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+    @keyframes revealIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
 
     /* Accessibility Overrides */
@@ -120,84 +173,84 @@
       }
     }
     @media (prefers-reduced-transparency: reduce) {
-      .apple-glass, header, .apple-card {
-        background: #11141c !important;
+      .glass-surface, .sonner-toast, header {
+        background: #0f131c !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
       }
     }
   </style>
 </head>
-<body class="bg-apple-dark text-slate-100 min-h-screen flex flex-col selection:bg-apple-blue selection:text-white">
+<body class="selection:bg-brand-blue selection:text-white min-h-screen flex flex-col justify-between">
 
-  <!-- Subtle, calm ambient lighting (Apple design restraint) -->
+  <!-- Emil's subtle vignette lighting -->
   <div class="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[720px] h-[360px] bg-gradient-to-b from-blue-600/12 via-indigo-600/6 to-transparent rounded-full blur-[110px]"></div>
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[680px] h-[340px] bg-gradient-to-b from-blue-600/[0.09] via-indigo-600/[0.04] to-transparent rounded-full blur-[120px]"></div>
   </div>
 
-  <!-- macOS Style Translucent Header -->
-  <header class="border-b border-white/[0.07] border-t border-white/[0.12] bg-[#0c0e14]/70 backdrop-blur-xl sticky top-0 z-40 transition-colors">
-    <div class="max-w-5xl mx-auto px-5 h-14 flex items-center justify-between">
+  <!-- Header -->
+  <header class="border-b border-white/[0.06] border-t border-white/[0.1] bg-[#090b10]/80 backdrop-blur-xl sticky top-0 z-40">
+    <div class="max-w-4xl mx-auto px-5 h-14 flex items-center justify-between">
       
-      <!-- Brand & Icon -->
+      <!-- Brand Affordance -->
       <div class="flex items-center space-x-2.5">
-        <div class="w-8 h-8 rounded-lg bg-gradient-to-b from-white/15 to-white/5 border border-white/10 flex items-center justify-center shadow-inner">
-          <i data-lucide="film" class="w-4 h-4 text-white"></i>
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-b from-white/15 to-white/5 border border-white/10 flex items-center justify-center shadow-inner">
+          <i data-lucide="play" class="w-3.5 h-3.5 text-white fill-white/80"></i>
         </div>
-        <div class="flex items-center space-x-1.5">
-          <span class="text-sm font-semibold tracking-tight text-white">Ultra<span class="text-apple-blue">4K</span></span>
-          <span class="text-[11px] font-medium text-slate-400 px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.08]">Downloader</span>
+        <div class="flex items-baseline space-x-1.5">
+          <span class="text-sm font-semibold tracking-tight text-white">Cinema<span class="text-brand-blue">4K</span></span>
+          <span class="text-[10px] font-medium text-slate-400 px-1.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.06]">Pro Downloader</span>
         </div>
       </div>
 
-      <!-- FFmpeg System Status Pill -->
+      <!-- Engine Status Indicator -->
       <div id="ffmpegBadgeContainer" class="flex items-center space-x-2">
-        <button id="ffmpegStatusBtn" class="apple-btn flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-medium border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] transition-all">
+        <button id="ffmpegStatusBtn" class="tactile-btn flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]">
           <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-          <span class="tabular-nums">Checking System...</span>
+          <span class="tnum text-[11px]">Checking Engine</span>
         </button>
       </div>
 
     </div>
   </header>
 
-  <!-- Main Workspace -->
-  <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-14">
+  <!-- Central Workspace -->
+  <main class="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-14">
 
     <!-- Hero Title -->
-    <div class="text-center max-w-xl mx-auto mb-10">
-      <div class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-[12px] font-medium text-slate-300 mb-4 shadow-sm">
+    <div class="text-center max-w-lg mx-auto mb-9">
+      <div class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] font-medium text-slate-300 mb-3.5 shadow-sm">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-        <span>Lossless 4K Stream Merger</span>
+        <span>Lossless 4K (2160p) Merging &bull; 60 FPS</span>
       </div>
-      <h1 class="text-3xl sm:text-5xl font-bold display-heading text-white tracking-tight mb-3">
-        Download in pristine 4K.
+      <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2.5 leading-tight">
+        Video downloading, perfected.
       </h1>
-      <p class="text-slate-400 text-sm sm:text-base font-normal leading-relaxed">
-        Pulls separated video and audio tracks, merging them into cinema-grade MP4 at up to 60 frames per second.
+      <p class="text-slate-400 text-xs sm:text-sm font-normal leading-relaxed">
+        Paste any video link to pull separate 4K video and audio tracks, stitched into pristine MP4 with zero quality loss.
       </p>
     </div>
 
     <!-- Omnibar Input Card -->
-    <div class="apple-glass rounded-2xl p-3 sm:p-4 mb-8">
-      <form id="fetchForm" class="flex flex-col sm:flex-row gap-2.5">
+    <div class="glass-surface rounded-2xl p-2.5 sm:p-3 mb-7">
+      <form id="fetchForm" class="flex flex-col sm:flex-row gap-2">
         
         <div class="relative flex-1">
           <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-            <i data-lucide="link-2" class="w-4 h-4"></i>
+            <i data-lucide="link" class="w-4 h-4"></i>
           </div>
           <input
             type="url"
             id="videoUrl"
             required
-            placeholder="Paste video URL (YouTube, Vimeo, etc.)..."
-            class="w-full pl-10 pr-24 py-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.07] border border-white/[0.08] focus:border-apple-blue/70 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-apple-blue/30 transition-all font-normal"
+            placeholder="Paste video link here (YouTube, Vimeo, xHamster, etc.)..."
+            class="w-full pl-10 pr-24 py-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-brand-blue/80 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue/25 transition-all font-normal"
           />
           <button
             type="button"
             id="pasteBtn"
             title="Paste from clipboard"
-            class="apple-btn absolute inset-y-1.5 right-1.5 px-2.5 flex items-center space-x-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-slate-300 text-xs font-medium border border-white/10"
+            class="tactile-btn absolute inset-y-1.5 right-1.5 px-2.5 flex items-center space-x-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] text-slate-300 text-xs font-medium border border-white/10"
           >
             <i data-lucide="clipboard" class="w-3 h-3"></i>
             <span>Paste</span>
@@ -207,9 +260,9 @@
         <button
           type="submit"
           id="fetchBtn"
-          class="apple-btn px-6 py-3 rounded-xl bg-apple-blue hover:bg-apple-blueHover text-white font-semibold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center space-x-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          class="tactile-btn px-6 py-3 rounded-xl bg-brand-blue hover:bg-brand-blueHover text-white font-semibold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span id="fetchBtnText">Fetch</span>
+          <span id="fetchBtnText">Inspect</span>
           <i id="fetchBtnIcon" data-lucide="arrow-right" class="w-4 h-4"></i>
           <svg id="fetchSpinner" class="hidden animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -219,106 +272,92 @@
 
       </form>
 
-      <!-- Clean 4K Test Chips -->
-      <div class="mt-3 pt-3 border-t border-white/[0.06] flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
-        <span class="text-slate-500 text-[11px] font-medium mr-1">Sample 4K:</span>
-        <button type="button" class="sample-link px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 text-[11px] transition-colors" data-url="https://www.youtube.com/watch?v=LXb3EKWsInQ">
+      <!-- Quick sample links -->
+      <div class="mt-2.5 pt-2.5 border-t border-white/[0.05] flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+        <span class="text-slate-500 text-[11px] font-medium mr-1">Quick 4K Demo:</span>
+        <button type="button" class="sample-link tactile-btn px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 text-[11px]" data-url="https://www.youtube.com/watch?v=LXb3EKWsInQ">
           Costa Rica 4K 60fps
         </button>
-        <button type="button" class="sample-link px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 text-[11px] transition-colors" data-url="https://www.youtube.com/watch?v=aqz-KE-bpKQ">
+        <button type="button" class="sample-link tactile-btn px-2 py-0.5 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-slate-300 text-[11px]" data-url="https://www.youtube.com/watch?v=aqz-KE-bpKQ">
           Blender Bunny 4K
         </button>
       </div>
 
     </div>
 
-    <!-- Error Alert Banner -->
-    <div id="errorAlert" class="hidden apple-glass border-rose-500/30 bg-rose-950/30 rounded-2xl p-4 mb-8 flex items-start space-x-3 fade-in">
-      <div class="p-1.5 bg-rose-500/20 text-rose-400 rounded-lg">
-        <i data-lucide="alert-circle" class="w-4 h-4"></i>
-      </div>
-      <div class="flex-1">
-        <h4 class="text-xs font-semibold text-rose-300">Unable to Fetch Stream</h4>
-        <p id="errorMessage" class="text-xs text-rose-200/80 mt-0.5 leading-relaxed"></p>
-      </div>
-      <button id="closeErrorBtn" class="text-rose-400 hover:text-white p-1">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
-    </div>
-
-    <!-- Loading Shimmer State -->
-    <div id="loadingCard" class="hidden apple-glass rounded-2xl p-6 sm:p-8 mb-8 fade-in">
-      <div class="flex flex-col md:flex-row gap-6">
-        <div class="w-full md:w-72 aspect-video bg-white/[0.04] rounded-xl animate-pulse"></div>
-        <div class="flex-1 space-y-3">
-          <div class="h-5 bg-white/[0.06] rounded-md w-3/4 animate-pulse"></div>
-          <div class="h-3.5 bg-white/[0.04] rounded-md w-1/3 animate-pulse"></div>
-          <div class="grid grid-cols-2 gap-2.5 pt-4">
-            <div class="h-14 bg-white/[0.04] rounded-xl animate-pulse"></div>
-            <div class="h-14 bg-white/[0.04] rounded-xl animate-pulse"></div>
+    <!-- Loading Skeleton Shimmer -->
+    <div id="loadingCard" class="hidden glass-surface rounded-2xl p-6 mb-7 reveal-in">
+      <div class="flex flex-col sm:flex-row gap-5">
+        <div class="w-full sm:w-64 aspect-video bg-white/[0.04] rounded-xl animate-pulse"></div>
+        <div class="flex-1 space-y-2.5">
+          <div class="h-4 bg-white/[0.06] rounded-md w-3/4 animate-pulse"></div>
+          <div class="h-3 bg-white/[0.04] rounded-md w-1/3 animate-pulse"></div>
+          <div class="grid grid-cols-2 gap-2 pt-3">
+            <div class="h-12 bg-white/[0.04] rounded-xl animate-pulse"></div>
+            <div class="h-12 bg-white/[0.04] rounded-xl animate-pulse"></div>
           </div>
         </div>
       </div>
-      <div class="mt-5 pt-4 border-t border-white/[0.06] flex items-center justify-center space-x-2 text-slate-400 text-xs">
-        <svg class="animate-spin h-3.5 w-3.5 text-apple-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <div class="mt-4 pt-3.5 border-t border-white/[0.06] flex items-center justify-center space-x-2 text-slate-400 text-xs">
+        <svg class="animate-spin h-3.5 w-3.5 text-brand-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
         </svg>
-        <span>Inspecting video codec manifests and 4K tracks...</span>
+        <span class="text-[12px]">Analyzing audio/video manifests and stream tracks...</span>
       </div>
     </div>
 
-    <!-- Video Result & Quality Selector Card -->
-    <div id="resultCard" class="hidden apple-glass rounded-2xl p-6 sm:p-7 mb-8 fade-in">
-      <div class="flex flex-col lg:flex-row gap-7">
+    <!-- Video Inspection & Format Selector Card -->
+    <div id="resultCard" class="hidden glass-surface rounded-2xl p-5 sm:p-6 mb-7 reveal-in">
+      <div class="flex flex-col md:flex-row gap-6">
         
         <!-- Video Preview -->
-        <div class="w-full lg:w-80 flex-shrink-0">
-          <div class="relative rounded-xl overflow-hidden aspect-video bg-black/50 border border-white/10 shadow-lg">
+        <div class="w-full md:w-72 flex-shrink-0">
+          <div class="relative rounded-xl overflow-hidden aspect-video bg-black/60 border border-white/10 shadow-md">
             <img id="videoThumb" src="" alt="Thumbnail" class="w-full h-full object-cover" />
-            <div class="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded bg-black/75 backdrop-blur-md text-white tabular-nums text-[11px] font-semibold border border-white/10 flex items-center space-x-1">
+            <div class="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-md text-white tnum text-[11px] font-semibold border border-white/10">
               <span id="videoDuration">00:00</span>
             </div>
-            <div id="badge4k" class="hidden absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-white/90 backdrop-blur-md text-black text-[10px] font-bold tracking-wider uppercase shadow-md">
+            <div id="badge4k" class="hidden absolute top-2 left-2 px-2 py-0.5 rounded bg-white text-black text-[10px] font-bold tracking-wider uppercase shadow-md">
               4K UHD
             </div>
           </div>
 
-          <div class="mt-3.5 space-y-1">
-            <h3 id="videoTitle" class="text-sm font-semibold text-white line-clamp-2 leading-snug"></h3>
+          <div class="mt-3 space-y-1">
+            <h3 id="videoTitle" class="text-xs sm:text-sm font-semibold text-white line-clamp-2 leading-snug"></h3>
             <div class="flex items-center justify-between text-xs text-slate-400 pt-0.5">
-              <span id="videoUploader" class="text-slate-300 truncate font-medium">
+              <span id="videoUploader" class="text-slate-300 truncate font-medium text-[11px]">
                 <span>Creator</span>
               </span>
-              <span id="videoViews" class="tabular-nums text-slate-400 text-[11px] flex-shrink-0">
+              <span id="videoViews" class="tnum text-slate-400 text-[11px] flex-shrink-0">
                 <span>0 views</span>
               </span>
             </div>
           </div>
         </div>
 
-        <!-- Format Options -->
+        <!-- Format Selector & CTA -->
         <div class="flex-1 flex flex-col justify-between">
           <div>
-            <div class="flex items-center justify-between mb-3.5">
-              <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Available Formats</span>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Select Stream Quality</span>
               <span class="text-[11px] text-slate-400">Audio merged via FFmpeg</span>
             </div>
 
             <!-- Resolution Grid -->
-            <div id="resolutionGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-5">
-              <!-- Rendered dynamically -->
+            <div id="resolutionGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+              <!-- Dynamically populated with .format-card -->
             </div>
           </div>
 
-          <!-- Primary CTA Button -->
+          <!-- Download Action -->
           <div class="pt-3 border-t border-white/[0.06]">
             <button
               id="startDownloadBtn"
-              class="apple-btn w-full py-3.5 px-6 rounded-xl bg-apple-blue hover:bg-apple-blueHover text-white font-semibold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center space-x-2"
+              class="tactile-btn w-full py-3.5 px-5 rounded-xl bg-brand-blue hover:bg-brand-blueHover text-white font-semibold text-sm shadow-md shadow-blue-500/20 flex items-center justify-center space-x-2"
             >
-              <i data-lucide="arrow-down-circle" class="w-4 h-4"></i>
-              <span id="startDownloadBtnText">Download Selected Format</span>
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span id="startDownloadBtnText">Download Selected Quality</span>
             </button>
           </div>
         </div>
@@ -326,104 +365,104 @@
       </div>
     </div>
 
-    <!-- Fluid Live Download Card -->
-    <div id="progressCard" class="hidden apple-glass rounded-2xl p-6 sm:p-7 mb-8 border-apple-blue/40 fade-in">
+    <!-- Live Progress Capsule -->
+    <div id="progressCard" class="hidden glass-surface rounded-2xl p-5 sm:p-6 mb-7 border-brand-blue/40 reveal-in">
       
-      <div class="flex items-start justify-between mb-4">
+      <div class="flex items-start justify-between mb-3.5">
         <div class="flex items-center space-x-3">
-          <div class="w-9 h-9 rounded-xl bg-apple-blue/15 text-apple-blue flex items-center justify-center border border-apple-blue/20">
+          <div class="w-8 h-8 rounded-lg bg-brand-blue/15 text-brand-blue flex items-center justify-center border border-brand-blue/20">
             <i data-lucide="loader" class="w-4 h-4 animate-spin"></i>
           </div>
           <div>
-            <h4 id="progressTitle" class="text-sm font-semibold text-white">Processing Video</h4>
-            <p id="progressStage" class="text-xs text-slate-400 mt-0.5">Initializing workers...</p>
+            <h4 id="progressTitle" class="text-xs sm:text-sm font-semibold text-white">Processing Video</h4>
+            <p id="progressStage" class="text-[11px] text-slate-400 mt-0.5">Initializing workers...</p>
           </div>
         </div>
-        <span id="progressPercent" class="text-xl font-bold text-apple-blue tabular-nums">0%</span>
+        <span id="progressPercent" class="text-lg font-bold text-brand-blue tnum">0%</span>
       </div>
 
-      <!-- Native Smooth Progress Bar -->
-      <div class="w-full bg-white/[0.06] rounded-full h-2 overflow-hidden border border-white/[0.08] mb-4">
-        <div id="progressBar" class="bg-apple-blue h-full rounded-full transition-all duration-200 w-0"></div>
+      <!-- Linear Progress Bar -->
+      <div class="w-full bg-white/[0.06] rounded-full h-1.5 overflow-hidden border border-white/[0.08] mb-3.5">
+        <div id="progressBar" class="bg-brand-blue h-full rounded-full transition-all duration-200 w-0"></div>
       </div>
 
-      <!-- Real-time Stats Capsule with Tabular Numerals -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white/[0.03] rounded-xl p-3 border border-white/[0.06] mb-4">
+      <!-- Real-time Stats Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white/[0.025] rounded-xl p-2.5 border border-white/[0.06] mb-3.5">
         <div>
-          <span class="text-slate-500 text-[11px] block">Speed</span>
-          <span id="statSpeed" class="font-medium text-slate-200 tabular-nums mt-0.5 block">--</span>
+          <span class="text-slate-500 text-[10px] block">Download Speed</span>
+          <span id="statSpeed" class="font-medium text-slate-200 tnum text-[11px] mt-0.5 block">--</span>
         </div>
         <div>
-          <span class="text-slate-500 text-[11px] block">Time Remaining</span>
-          <span id="statEta" class="font-medium text-slate-200 tabular-nums mt-0.5 block">--</span>
+          <span class="text-slate-500 text-[10px] block">ETA</span>
+          <span id="statEta" class="font-medium text-slate-200 tnum text-[11px] mt-0.5 block">--</span>
         </div>
         <div>
-          <span class="text-slate-500 text-[11px] block">Stream Tracks</span>
-          <span class="font-medium text-slate-200 mt-0.5 block">Video + Audio</span>
+          <span class="text-slate-500 text-[10px] block">Stream Handling</span>
+          <span class="font-medium text-slate-200 text-[11px] mt-0.5 block">Video + Audio</span>
         </div>
         <div>
-          <span class="text-slate-500 text-[11px] block">Stitching Engine</span>
-          <span class="font-medium text-emerald-400 mt-0.5 block">FFmpeg Mux</span>
+          <span class="text-slate-500 text-[10px] block">Engine</span>
+          <span class="font-medium text-emerald-400 text-[11px] mt-0.5 block">FFmpeg Mux</span>
         </div>
       </div>
 
-      <!-- Download Ready Banner -->
-      <div id="downloadReadyNotice" class="hidden p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div class="flex items-center space-x-2.5 text-emerald-300">
+      <!-- Completed Notification -->
+      <div id="downloadReadyNotice" class="hidden p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+        <div class="flex items-center space-x-2 text-emerald-300">
           <i data-lucide="check" class="w-4 h-4 text-emerald-400 flex-shrink-0"></i>
-          <span class="text-xs font-medium">Download complete. Served to your browser automatically.</span>
+          <span class="text-xs font-medium">Download complete. Triggered automatically in browser.</span>
         </div>
-        <a id="manualDownloadLink" href="#" class="apple-btn px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm whitespace-nowrap">
+        <a id="manualDownloadLink" href="#" class="tactile-btn px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm whitespace-nowrap">
           Click if not started
         </a>
       </div>
 
     </div>
 
-    <!-- Quiet Footnote Status -->
-    <div class="pt-6 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-      <div class="flex items-center space-x-4">
-        <span>Lossless 4K Merging</span>
-        <span>&bull;</span>
-        <span>FFmpeg Remuxing</span>
-        <span>&bull;</span>
-        <span>Direct Browser Delivery</span>
-      </div>
-      <div class="text-[11px] text-slate-500">
-        Built with FastAPI &bull; yt-dlp &bull; Tailored for Apple HIG
-      </div>
-    </div>
-
   </main>
 
-  <!-- Apple Sheet Modal for FFmpeg Instructions -->
+  <!-- Footer -->
+  <footer class="border-t border-white/[0.05] py-5 text-center text-xs text-slate-500">
+    <div class="flex items-center justify-center space-x-3 text-[11px]">
+      <span>Cinema 4K Engine</span>
+      <span>&bull;</span>
+      <span>FFmpeg Muxing</span>
+      <span>&bull;</span>
+      <span>Zero Compression Loss</span>
+    </div>
+  </footer>
+
+  <!-- Emil's Toast Mount -->
+  <div id="sonnerContainer"></div>
+
+  <!-- FFmpeg Setup Modal Sheet -->
   <div id="ffmpegModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-    <div class="apple-glass rounded-2xl max-w-md w-full p-6 shadow-2xl relative modal-enter border border-white/15">
+    <div class="glass-surface rounded-2xl max-w-md w-full p-6 shadow-2xl relative modal-sheet border border-white/15">
       
-      <button id="closeModalBtn" class="apple-btn absolute top-4 right-4 text-slate-400 hover:text-white p-1">
+      <button id="closeModalBtn" class="tactile-btn absolute top-4 right-4 text-slate-400 hover:text-white p-1">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
 
       <div class="flex items-center space-x-3 mb-4">
-        <div class="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+        <div class="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/20 flex items-center justify-center">
           <i data-lucide="cpu" class="w-4 h-4"></i>
         </div>
         <div>
           <h3 class="text-sm font-semibold text-white">FFmpeg Engine Required</h3>
-          <p class="text-[11px] text-slate-400">Required to merge 4K video and audio tracks</p>
+          <p class="text-[11px] text-slate-400">Merges separated 4K video and audio tracks</p>
         </div>
       </div>
 
-      <div class="space-y-3.5 text-xs text-slate-300 leading-relaxed">
+      <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
         <p>
-          High-resolution 4K streams on YouTube are hosted as separate video-only and audio-only streams. <strong>FFmpeg</strong> is the media muxer that merges them into a playable MP4.
+          High-resolution 4K streams on YouTube are stored as separate video-only and audio-only streams. <strong>FFmpeg</strong> combines them into a playable MP4.
         </p>
 
         <div>
           <span class="text-[11px] font-medium text-slate-400 mb-1.5 block">1-Click Install for Windows:</span>
-          <div class="relative bg-black/50 p-2.5 rounded-xl border border-white/10 font-mono text-xs text-slate-200 flex items-center justify-between">
+          <div class="relative bg-black/50 p-2 rounded-xl border border-white/10 font-mono text-xs text-slate-200 flex items-center justify-between">
             <span id="cmdWin">winget install Gyan.FFmpeg</span>
-            <button id="copyCmdBtn" class="apple-btn px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white text-[11px] font-sans">
+            <button id="copyCmdBtn" class="tactile-btn px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/20 text-white text-[11px] font-sans">
               <span id="copyText">Copy</span>
             </button>
           </div>
@@ -434,8 +473,8 @@
         </p>
       </div>
 
-      <div class="mt-5 pt-3 border-t border-white/[0.06] flex justify-end">
-        <button id="modalGotItBtn" class="apple-btn px-4 py-2 rounded-xl bg-apple-blue hover:bg-apple-blueHover text-white font-medium text-xs">
+      <div class="mt-4 pt-3 border-t border-white/[0.06] flex justify-end">
+        <button id="modalGotItBtn" class="tactile-btn px-4 py-1.5 rounded-xl bg-brand-blue hover:bg-brand-blueHover text-white font-medium text-xs">
           Done
         </button>
       </div>
